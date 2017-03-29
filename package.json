@@ -1,10 +1,11 @@
 {
     "name": "currycheck",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "author": "Michael Hanus <mh@informatik.uni-kiel.de>",
     "synopsis": "A tool to support automatic testing of Curry programs",
     "category": [ "Testing" ],
     "dependencies": {
+        "rewriting" : ">= 0.0.1"
     },
     "configModule": "CurryCheckConfig",
     "executable": {
