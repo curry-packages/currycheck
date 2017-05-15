@@ -61,7 +61,7 @@ ccBanner = unlines [bannerLine,bannerText,bannerLine]
 -- Help text
 usageText :: String
 usageText = usageInfo ("Usage: curry check [options] <module names>\n") options
-  
+
 -------------------------------------------------------------------------
 -- Representation of command line options.
 data Options = Options
@@ -281,7 +281,7 @@ createTests opts mainmodname tm = map createTest (propTests tm)
   msgOf test = string2ac $ genTestMsg (orgModuleName tm) test
 
   testmname = testModuleName tm
-  
+
   genTestName (modName, fName) = fName ++ "_" ++ modNameToId modName
 
   easyCheckFuncName arity =
@@ -323,17 +323,17 @@ createTests opts mainmodname tm = map createTest (propTests tm)
        in if n==0 then stdConfigOp
                   else applyF (easyCheckExecModule,"setMaxTest")
                               [cInt n, stdConfigOp]
-                            
+
     configOpWithMaxFail =
       let n = optMaxFail opts
        in if n==0 then configOpWithMaxTest
                   else applyF (easyCheckExecModule,"setMaxFail")
                               [cInt n, configOpWithMaxTest]
-                            
+
     msgvar = (0,"msg")
-    
+
   stdConfigOp = constF (easyCheckConfig opts)
-    
+
   ioTestBody (_, name) test =
     [simpleRule [] $ applyF (easyCheckExecModule,"checkPropIOWithMsg")
                             [stdConfigOp, msgOf test, CSymbol (testmname,name)]]
@@ -375,7 +375,7 @@ typename2genopname mainmod definedgenops (mn,tc)
   = (mainmod, "gen_" ++ modNameToId mn ++ "_" ++ tc)
  where
   maybeuserdefined = find (\qn -> "gen"++tc == snd qn) definedgenops
-  
+
   transTC tcons | tcons == "[]"     = "List"
                 | tcons == "()"     = "Unit"
                 | tcons == "(,)"    = "Pair"
@@ -484,7 +484,7 @@ transformDetTests opts prooffiles
              opDecls)
  where
   preCondOps = preCondOperations functions
-  
+
   -- generate determinism tests:
   detOpTests = genDetOpTests prooffiles preCondOps functions
 
@@ -629,7 +629,7 @@ poly2default dt fdecl@(CFunc (mn,fname) arity vis qftype rs)
   = [(True, CFunc (mn,fname) arity vis (CQualType clscon ftype) rs)]
  where
   CQualType clscon ftype = defaultQualType qftype
-  
+
   p2dt (CTVar _)         = baseType (pre dt)
   p2dt (CFuncType t1 t2) = CFuncType (p2dt t1) (p2dt t2)
   p2dt (CTApply t1 t2)   = CTApply (p2dt t1) (p2dt t2)
@@ -899,13 +899,13 @@ collectAllTestTypeDecls tdecls testtypenames = do
   allTConsInDecl :: FC.TypeDecl -> [QName]
   allTConsInDecl = FCG.trType (\_ _ _ -> concatMap allTConsInConsDecl)
                               (\_ _ _ -> allTConsInTypeExpr)
-  
+
   allTConsInConsDecl :: FC.ConsDecl -> [QName]
   allTConsInConsDecl = FCG.trCons (\_ _ _ -> concatMap allTConsInTypeExpr)
-  
+
   allTConsInTypeExpr :: FC.TypeExpr -> [QName]
   allTConsInTypeExpr =
-    FCG.trTypeExpr (\_ -> []) (\tc targs -> tc : concat targs) (++)
+    FCG.trTypeExpr (\_ -> []) (\tc targs -> tc : concat targs) (++) (flip const)
 
 -- Creates a test data generator for a given type declaration.
 createTestDataGenerator :: String -> FC.TypeDecl -> CFuncDecl
@@ -942,6 +942,9 @@ createTestDataGenerator mainmodname tdecl = type2genData tdecl
               "': cannot create value generators for functions!"
     type2gen (FC.TCons qtc argtypes) =
       applyF (typename2genopname mainmodname [] qtc) (map type2gen argtypes)
+    type2gen (FC.ForallType _ _) =
+      error $ "Type '" ++ qtString ++
+              "': cannot create value generators for forall types!"
 
     ctvars = map (\i -> CTVar (i,"a"++show i)) tvars
     cvars  = map (\i -> (i,"a"++show i)) tvars
@@ -983,7 +986,7 @@ main = do
   opts <- processOpts (foldl (flip id) defaultOptions funopts)
   unless (null opterrors)
          (putStr (unlines opterrors) >> putStrLn usageText >> exitWith 1)
-  putStrIfNormal opts ccBanner 
+  putStrIfNormal opts ccBanner
   when (null args || optHelp opts) (putStrLn usageText >> exitWith 1)
   testModules <- mapIO (analyseModule opts) (map stripCurrySuffix args)
   let staticerrs       = concatMap staticErrors (concat testModules)
@@ -1064,7 +1067,7 @@ searchTreeModule = "SearchTree"
 --- Name of SearchTree type constructor.
 searchTreeTC :: QName
 searchTreeTC = (searchTreeModule,"SearchTree")
-    
+
 --- Name of the SearchTreeGenerator module.
 generatorModule :: String
 generatorModule = "SearchTreeGenerators"
