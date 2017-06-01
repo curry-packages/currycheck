@@ -25,7 +25,7 @@ import AbstractCurry.Pretty    (showCProg)
 import AbstractCurry.Transform (renameCurryModule,updCProg,updQNamesInCProg)
 import AnsiCodes
 import Distribution
-import FilePath                ((</>), takeDirectory)
+import FilePath                ((</>), pathSeparator, takeDirectory)
 import qualified FlatCurry.Types as FC
 import FlatCurry.Files
 import qualified FlatCurry.Goodies as FCG
@@ -34,7 +34,7 @@ import IO
 import List
 import Maybe                   (fromJust, isJust)
 import ReadNumeric             (readNat)
-import System                  (system, exitWith, getArgs, getPID)
+import System                  (system, exitWith, getArgs, getPID, getEnviron)
 
 import CheckDetUsage           (checkDetUse, containsDetOperations)
 import ContractUsage
@@ -54,7 +54,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 06/02/2017)"
+                packageVersion ++ " of 01/06/2017)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -171,6 +171,10 @@ putStrIfNormal opts s = unless (isQuiet opts) (putStr s >> hFlush stdout)
 --- Print second argument if verbosity level > 1:
 putStrIfVerbose :: Options -> String -> IO ()
 putStrIfVerbose opts s = when (optVerb opts > 1) (putStr s >> hFlush stdout)
+
+--- Print second argument if verbosity level > 3:
+putStrLnIfDebug :: Options -> String -> IO ()
+putStrLnIfDebug opts s = when (optVerb opts > 3) (putStrLn s >> hFlush stdout)
 
 --- use some coloring (from library AnsiCodes) if color option is on:
 withColor :: Options -> (String -> String) -> String -> String
@@ -676,7 +680,7 @@ analyseCurryProg opts modname orgprog = do
         return .
         maybe (error $ "Source file of module '"++modname++"' not found!") id
   let srcdir = takeDirectory srcfilename
-  when (optVerb opts > 3) $ putStrLn ("Source file: " ++ srcfilename)
+  putStrLnIfDebug opts $ "Source file: " ++ srcfilename
   prooffiles <- if optProof opts then getProofFiles srcdir else return []
   unless (null prooffiles) $ putStrIfVerbose opts $
     unlines ("Proof files found:" : map ("- " ++) prooffiles)
@@ -879,7 +883,7 @@ cleanup opts mainmodname modules =
     maybe done
           (\ (_,srcfilename) -> do
             system $ installDir </> "bin" </> "cleancurry" ++ " " ++ modname
-            system $ "rm -f " ++ srcfilename
+            system $ "/bin/rm -f " ++ srcfilename
             done )
 
 -- Show some statistics about number of tests:
@@ -906,7 +910,9 @@ main = do
          (putStr (unlines opterrors) >> putStrLn usageText >> exitWith 1)
   putStrIfNormal opts ccBanner 
   when (null args || optHelp opts) (putStrLn usageText >> exitWith 1)
-  testModules <- mapIO (analyseModule opts) (map stripCurrySuffix args)
+  let mods = map stripCurrySuffix args
+  mapIO_ checkModuleName mods
+  testModules <- mapIO (analyseModule opts) mods
   let staticerrs       = concatMap staticErrors (concat testModules)
       finaltestmodules = filter testThisModule (concat testModules)
       testmodname = if null (optMainProg opts)
@@ -922,12 +928,17 @@ main = do
                           "Generating main test module '"++testmodname++"'..."
     genMainTestModule opts testmodname finaltestmodules
     putStrIfNormal opts $ withColor opts blue $ "and compiling it...\n"
-    ret <- system $ unwords $ [installDir </> "bin" </> "curry"
-                              ,"--noreadline"
-                              ,":set -time"
-                              ,":set v0"
-                              ,":set parser -Wnone"
-                              ,":l "++testmodname,":eval main :q"]
+    currypath <- getEnviron "CURRYPATH"
+    let runcmd = unwords $
+                   [ installDir </> "bin" </> "curry"
+                   , "--noreadline"
+                   , ":set -time"
+                   , ":set " ++ if optVerb opts > 3 then "v1" else "v0"
+                   , ":set parser -Wnone"
+                   , if null currypath then "" else ":set path " ++ currypath
+                   , ":l "++testmodname,":eval main :q" ]
+    putStrLnIfDebug opts $ "Executing command:\n" ++ runcmd
+    ret <- system runcmd
     cleanup opts testmodname finaltestmodules
     unless (isQuiet opts || ret /= 0) $
       putStrLn $ withColor opts green $ showTestStatistics finaltestmodules
@@ -935,6 +946,12 @@ main = do
  where
   showStaticErrors opts errs = putStrLn $ withColor opts red $
     unlines (line : "STATIC ERRORS IN PROGRAMS:" : errs) ++ line
+
+  checkModuleName mn =
+    when (pathSeparator `elem` mn) $ do
+      putStrLn $ "Module names with path prefixes not allowed: " ++ mn
+      exitWith 1
+
   line = take 78 (repeat '=')
 
 -------------------------------------------------------------------------
@@ -983,7 +1000,7 @@ generatorModule = "SearchTreeGenerators"
 writeCurryProgram :: Options -> String -> CurryProg -> String -> IO ()
 writeCurryProgram opts srcdir p appendix = do
   let progfile = srcdir </> modNameToPath (progName p) ++ ".curry"
-  when (optVerb opts > 3) $ putStrLn ("Writing program: " ++ progfile)
+  putStrLnIfDebug opts $ "Writing program: " ++ progfile
   writeFile progfile
             (showCProg p ++ "\n" ++ appendix ++ "\n")
 
