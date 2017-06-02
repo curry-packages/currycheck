@@ -928,7 +928,9 @@ main = do
                           "Generating main test module '"++testmodname++"'..."
     genMainTestModule opts testmodname finaltestmodules
     putStrIfNormal opts $ withColor opts blue $ "and compiling it...\n"
-    currypath <- getEnviron "CURRYPATH"
+    ecurrypath <- getEnviron "CURRYPATH"
+    let currypath = case ecurrypath of ':':_ -> '.':ecurrypath
+                                       _     -> ecurrypath
     let runcmd = unwords $
                    [ installDir </> "bin" </> "curry"
                    , "--noreadline"
