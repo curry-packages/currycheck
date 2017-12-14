@@ -14,7 +14,7 @@
 ---   (together with possible preconditions).
 ---
 --- @author Michael Hanus, Jan-Patrick Baye
---- @version February 2017
+--- @version December 2017
 -------------------------------------------------------------------------
 
 import AbstractCurry.Types
@@ -24,6 +24,7 @@ import AbstractCurry.Build
 import AbstractCurry.Pretty    (showCProg)
 import AbstractCurry.Transform (renameCurryModule,updCProg,updQNamesInCProg)
 import AnsiCodes
+import Char                    (toUpper)
 import Distribution
 import FilePath                ((</>), pathSeparator, takeDirectory)
 import qualified FlatCurry.Types as FC
@@ -54,7 +55,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 01/06/2017)"
+                packageVersion ++ " of 14/12/2017)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -197,9 +198,14 @@ isDetSuffix = "IsDeterministic"
 
 -------------------------------------------------------------------------
 -- Internal representation of tests extracted from a Curry module.
--- A test is either a property test (with a name, type, source line number)
--- or an IO test (with a name and source line number).
-data Test = PropTest QName CTypeExpr Int | IOTest QName Int
+-- A test is
+-- * a property test (with a name, type, source line number),
+-- * an IO test (with a name and source line number), or
+-- * an operation equivalence test (with a name, the names of both operations,
+--   and their type, and the source line number).
+data Test = PropTest  QName CTypeExpr Int
+          | IOTest    QName Int
+          | EquivTest QName QName QName CTypeExpr Int
 
 -- Is the test an IO test?
 isIOTest :: Test -> Bool
@@ -215,15 +221,22 @@ isPropTest :: Test -> Bool
 isPropTest t = case t of PropTest _ texp _ -> not (null (argTypes texp))
                          _                 -> False
 
+-- Is the test an equivalence test?
+isEquivTest :: Test -> Bool
+isEquivTest t = case t of EquivTest _ _ _ _ _ -> True
+                          _                   -> False
+
 -- The name of a test:
 getTestName :: Test -> QName
-getTestName (PropTest n _ _) = n
-getTestName (IOTest   n   _) = n
+getTestName (PropTest  n _     _) = n
+getTestName (IOTest    n       _) = n
+getTestName (EquivTest n _ _ _ _) = n
 
 -- The line number of a test:
 getTestLine :: Test -> Int
-getTestLine (PropTest _ _ n) = n
-getTestLine (IOTest   _   n) = n
+getTestLine (PropTest  _ _     n) = n
+getTestLine (IOTest    _       n) = n
+getTestLine (EquivTest _ _ _ _ n) = n
 
 -- Generates a useful error message for tests (with module and line number)
 genTestMsg :: String -> Test -> String
@@ -257,30 +270,48 @@ testThisModule :: TestModule -> Bool
 testThisModule tm = null (staticErrors tm) && not (null (propTests tm))
 
 -- Extracts all user data types used as test data generators.
-userTestDataOfModule :: TestModule -> [QName]
+-- Each type has a flag which is `True` if the test data should contain
+-- partial values (for checking equivalence of operations).
+userTestDataOfModule :: TestModule -> [(QName,Bool)]
 userTestDataOfModule testmod = concatMap testDataOf (propTests testmod)
  where
   testDataOf (IOTest _ _) = []
-  testDataOf (PropTest _ texp _) = unionOn userTypesOf (argTypes texp)
+  testDataOf (PropTest _ texp _) =
+    map (\t -> (t,False)) (filter (\ (mn,_) -> mn /= preludeName)
+                                  (unionOn tconsOf (argTypes texp)))
+  testDataOf (EquivTest _ _ _ texp _) =
+    map (\t -> (t,True)) (unionOn tconsOf (argTypes texp))
 
-  userTypesOf (CTVar _) = []
-  userTypesOf (CFuncType from to) = union (userTypesOf from) (userTypesOf to)
-  userTypesOf (CTCons (mn,tc) argtypes) =
-    union (if mn == preludeName then [] else [(mn,tc)])
-          (unionOn userTypesOf argtypes)
-
-  unionOn f = foldr union [] . map f
+-- Extracts all result data types used in equivalence properties.
+equivPropTypes :: TestModule -> [QName]
+equivPropTypes testmod = concatMap equivTypesOf (propTests testmod)
+ where
+  equivTypesOf (IOTest _ _) = []
+  equivTypesOf (PropTest _ _ _) = []
+  equivTypesOf (EquivTest _ _ _ texp _) = tconsOf (resultType texp)
 
 -------------------------------------------------------------------------
--- Transform all tests of a module into an appropriate call of EasyCheck:
+-- Transform all tests of a module into operations that perform
+-- appropriate calls to EasyCheck:
 createTests :: Options -> String -> TestModule -> [CFuncDecl]
-createTests opts mainmodname tm = map createTest (propTests tm)
+createTests opts mainmod tm = map createTest (propTests tm)
  where
   createTest test =
-    cfunc (mainmodname, (genTestName $ getTestName test)) 0 Public
+    cfunc (mainmod, (genTestName $ getTestName test)) 0 Public
           (ioType (maybeType stringType))
-          (case test of PropTest   name t _ -> propBody name (argTypes t) test
-                        IOTest name       _ -> ioTestBody name test)
+          (case test of
+             PropTest  name t _       -> propBody   name t test
+             IOTest    name   _       -> ioTestBody name test
+             EquivTest name f1 f2 t _ ->
+               -- if test name has suffix "'TERMINATE", the test for terminating
+               -- operations is used, otherwise the test for arbitrary
+               -- operations (which limits the size of computed results
+               -- but might find counter-examples later)
+               -- (TODO: automatic selection by using CASS)
+               if "'TERMINATE" `isSuffixOf` map toUpper (snd name)
+                 then equivBodyTerm f1 f2 t test
+                 else equivBodyAny  f1 f2 t test
+          )
 
   msgOf test = string2ac $ genTestMsg (orgModuleName tm) test
 
@@ -294,24 +325,52 @@ createTests opts mainmodname tm = map createTest (propTests tm)
                  " parameters are currently not supported!"
     else (easyCheckExecModule,"checkWithValues" ++ show arity)
 
-  propBody (_, name) argtypes test =
+  -- Operation equivalence test for terminating operations:
+  equivBodyTerm f1 f2 texp test =
+    let xvar = (1,"x")
+        pvalOfFunc = ctype2pvalOf mainmod "pvalOf" (resultType texp)
+    in propOrEquivBody (map (\t -> (t,True)) (argTypes texp)) test
+         (CLambda [CPVar xvar]
+            (applyF (easyCheckModule,"<~>")
+                    [applyE pvalOfFunc [applyF f1 [CVar xvar]],
+                     applyE pvalOfFunc [applyF f2 [CVar xvar]]]))
+
+  -- Operation equivalence test for arbitrary operations:
+  equivBodyAny f1 f2 texp test =
+    let xvar = (1,"x")
+        pvar = (2,"p")
+        pvalOfFunc = ctype2pvalOf mainmod "peval" (resultType texp)
+    in propOrEquivBody
+         (map (\t -> (t,True)) (argTypes texp) ++
+          [(ctype2BotType mainmod  (resultType texp), False)])
+         test
+         (CLambda [CPVar xvar, CPVar pvar]
+            (applyF (easyCheckModule,"<~>")
+                    [applyE pvalOfFunc [applyF f1 [CVar xvar], CVar pvar],
+                     applyE pvalOfFunc [applyF f2 [CVar xvar], CVar pvar]]))
+
+  propBody qname texp test =
+    propOrEquivBody (map (\t -> (t,False)) (argTypes texp))
+                    test (CSymbol (testmname,snd qname))
+
+  propOrEquivBody argtypes test propexp =
     [simpleRule [] $
-       CLetDecl [CLocalPat (CPVar msgvar) (CSimpleRhs (msgOf test) [])]
-                (applyF (easyCheckExecModule, "checkPropWithMsg")
-                  [CVar msgvar
-                  ,applyF (easyCheckFuncName (length argtypes)) $
+      CLetDecl [CLocalPat (CPVar msgvar) (CSimpleRhs (msgOf test) [])]
+               (applyF (easyCheckExecModule, "checkPropWithMsg")
+                 [ CVar msgvar
+                 , applyF (easyCheckFuncName (length argtypes)) $
                     [configOpWithMaxFail, CVar msgvar] ++
-                    (map (\t ->
+                    (map (\ (t,genpart) ->
                           applyF (easyCheckModule,"valuesOfSearchTree")
                             [if isPAKCS || useUserDefinedGen t || isFloatType t
-                             then type2genop mainmodname tm t
+                             then type2genop mainmod tm genpart t
                              else applyF (searchTreeModule,"someSearchTree")
                                          [constF (pre "unknown")]])
                          argtypes) ++
-                    [CSymbol (testmname,name)]
-                  ])]
+                    [propexp]
+                 ])]
    where
-    useUserDefinedGen texp = case texp of
+    useUserDefinedGen te = case te of
       CTVar _         -> error "No polymorphic generator!"
       CFuncType _ _   -> error "No generator for functional types!"
       CTCons (_,tc) _ -> isJust
@@ -346,37 +405,48 @@ easyCheckConfig opts =
                        else "easyConfig")
 
 -- Translates a type expression into calls to generator operations.
-type2genop :: String -> TestModule -> CTypeExpr -> CExpr
-type2genop _ _ (CTVar _)       = error "No polymorphic generator!"
-type2genop _ _ (CFuncType _ _) = error "No generator for functional types!"
-type2genop mainmod tm (CTCons qt targs) =
-  applyF (typename2genopname mainmod (generators tm) qt)
-         (map (type2genop mainmod tm) targs)
+-- If the third argument is `True`, calls to partial generators are used.
+type2genop :: String -> TestModule -> Bool -> CTypeExpr -> CExpr
+type2genop _ _ _ (CTVar _)       = error "No polymorphic generator!"
+type2genop _ _ _ (CFuncType _ _) = error "No generator for functional types!"
+type2genop mainmod tm genpart (CTCons qt targs) =
+  applyF (typename2genopname mainmod (generators tm) genpart qt)
+         (map (type2genop mainmod tm genpart) targs)
 
 isFloatType :: CTypeExpr -> Bool
 isFloatType texp = case texp of CTCons tc [] -> tc == (preludeName,"Float")
                                 _            -> False
 
-typename2genopname :: String -> [QName] -> QName -> QName
-typename2genopname mainmod definedgenops (mn,tc)
+-- Translates the name of a type constructor into the name of the
+-- generator operation for values of this type.
+-- The first argument is the name of the main module.
+-- The second argument contains the user-defined generator operations.
+-- If the third argument is `True`, generators for partial values are used.
+typename2genopname :: String -> [QName] -> Bool -> QName -> QName
+typename2genopname mainmod definedgenops genpart (mn,tc)
+  | genpart  -- we use our own generator for partial values:
+  = (mainmod, "gen_" ++ modNameToId mn ++ "_" ++ transQN tc ++ "_PARTIAL")
   | isJust maybeuserdefined -- take user-defined generator:
   = fromJust maybeuserdefined
-  | mn==preludeName &&
-    tc `elem` ["Bool","Int","Float","Char","Maybe","Either","Ordering"]
-  = (generatorModule, "gen" ++ tc)
-  | mn==preludeName && tc `elem` ["[]","()","(,)","(,,)","(,,,)","(,,,,)"]
-  = (generatorModule, "gen" ++ transTC tc)
+  | mn==preludeName
+  = (generatorModule, "gen" ++ transQN tc)
   | otherwise -- we use our own generator:
-  = (mainmod, "gen_" ++ modNameToId mn ++ "_" ++ tc)
+  = (mainmod, "gen_" ++ modNameToId mn ++ "_" ++ transQN tc ++
+              if genpart then "_PARTIAL" else "")
  where
   maybeuserdefined = find (\qn -> "gen"++tc == snd qn) definedgenops
-  
-  transTC tcons | tcons == "[]"     = "List"
-                | tcons == "()"     = "Unit"
-                | tcons == "(,)"    = "Pair"
-                | tcons == "(,,)"   = "Triple"
-                | tcons == "(,,,)"  = "Tuple4"
-                | tcons == "(,,,,)" = "Tuple5"
+
+-- Transform a qualified (typ) constructor name into a name
+-- with alpha-numeric characters.
+transQN :: String -> String
+transQN tcons | tcons == "[]"     = "List"
+              | tcons == ":"      = "Cons"
+              | tcons == "()"     = "Unit"
+              | tcons == "(,)"    = "Pair"
+              | tcons == "(,,)"   = "Triple"
+              | tcons == "(,,,)"  = "Tuple4"
+              | tcons == "(,,,,)" = "Tuple5"
+              | otherwise         = tcons
 
 -------------------------------------------------------------------------
 -- Turn all functions into public ones.
@@ -406,12 +476,23 @@ makeAllPublic (CurryProg modname imports typedecls functions opdecls) =
               CmtFunc cmt name arity Public typeExpr rules
 
 -- classify the tests as either PropTest or IOTest
-classifyTests :: [CFuncDecl] -> [Test]
-classifyTests = map makeProperty
+classifyTests :: Options -> CurryProg -> [CFuncDecl] -> [Test]
+classifyTests opts prog = map makeProperty
  where
-  makeProperty test = if isPropIOType (funcType test)
-                      then IOTest (funcName test) 0
-                      else PropTest (funcName test) (funcType test) 0
+  makeProperty test =
+    if isPropIOType (funcType test)
+      then IOTest tname 0
+      else maybe (PropTest tname (funcType test) 0)
+                 (\ (f1,f2) -> EquivTest tname f1 f2
+                                         (poly2defaultType (optDefType opts)
+                                                           (funcTypeOf f1))
+                                         0)
+                 (isEquivProperty test)
+    where tname = funcName test
+
+  funcTypeOf f = maybe (error $ "Cannot find type of " ++ show f ++ "!")
+                       funcType
+                       (find (\fd -> funcName fd == f) (functions prog))
 
 -- Extracts all tests from a given Curry module and transforms
 -- all polymorphic tests into tests on a base type.
@@ -607,15 +688,19 @@ poly2default dt (CmtFunc _ name arity vis ftype rules) =
 poly2default dt fdecl@(CFunc (mn,fname) arity vis ftype _)
   | isPolyType ftype
   = [(False,fdecl)
-    ,(True, CFunc (mn,fname++defTypeSuffix) arity vis (p2dt ftype)
-                     [simpleRule [] (applyF (mn,fname) [])])
+    ,(True, CFunc (mn,fname++defTypeSuffix) arity vis
+                  (poly2defaultType dt ftype)
+                  [simpleRule [] (applyF (mn,fname) [])])
     ]
   | otherwise
   = [(True,fdecl)]
+
+poly2defaultType :: String -> CTypeExpr -> CTypeExpr
+poly2defaultType dt texp = p2dt texp 
  where
-  p2dt (CTVar _) = baseType (pre dt)
+  p2dt (CTVar _)         = baseType (pre dt)
   p2dt (CFuncType t1 t2) = CFuncType (p2dt t1) (p2dt t2)
-  p2dt (CTCons ct ts) = CTCons ct (map p2dt ts)
+  p2dt (CTCons ct ts)    = CTCons ct (map p2dt ts)
 
 -- Transforms a possibly changed test name (like "test_ON_BASETYPE")
 -- back to its original name.
@@ -707,12 +792,14 @@ analyseCurryProg opts modname orgprog = do
   let tm    = TestModule modname
                          (progName pubmod)
                          staticerrs
-                         (addLinesNumbers words (classifyTests rawTests))
+                         (addLinesNumbers words
+                            (classifyTests opts pubmod rawTests))
                          (generatorsOfProg pubmod)
       dettm = TestModule modname
                          (progName pubdetmod)
                          []
-                         (addLinesNumbers words (classifyTests rawDetTests))
+                         (addLinesNumbers words
+                            (classifyTests opts pubdetmod rawDetTests))
                          (generatorsOfProg pubmod)
   when (testThisModule tm) $ writeCurryProgram opts topdir pubmod ""
   when (testThisModule dettm) $ writeCurryProgram opts topdir pubdetmod ""
@@ -725,10 +812,12 @@ analyseCurryProg opts modname orgprog = do
   addLinesNumbers words = map (addLineNumber words)
 
   addLineNumber :: [String] -> Test -> Test
-  addLineNumber words (PropTest   name texp _) =
+  addLineNumber words (PropTest name texp _) =
     PropTest   name texp $ getLineNumber words (orgTestName name)
   addLineNumber words (IOTest name _) =
     IOTest name $ getLineNumber words (orgTestName name)
+  addLineNumber words (EquivTest name f1 f2 texp _) =
+    EquivTest name f1 f2 texp $ getLineNumber words (orgTestName name)
 
   getLineNumber :: [String] -> QName -> Int
   getLineNumber words (_, name) = maybe 0 (+1) (elemIndex name words)
@@ -745,28 +834,232 @@ generatorsOfProg = map funcName . filter isGen . functions
    isSearchTreeType (CTCons tc _) = tc == searchTreeTC
 
 -------------------------------------------------------------------------
+-- Auxiliaries to support equivalence checking of operations.
+
+-- Create data type with explicit bottom constructors.
+genBottomType :: String -> FC.TypeDecl -> CTypeDecl
+genBottomType _ (FC.TypeSyn _ _ _ _) =
+  error "genBottomType: cannot translate type synonyms"
+genBottomType mainmod (FC.Type qtc@(_,tc) _ tvars consdecls) =
+  CType (mainmod,t2bt tc) Public (map transTVar tvars)
+        (CCons (mainmod,"Bot_"++transQN tc) Public [] :
+         if isBasicExtType qtc
+           then [CCons (mainmod,"Value_"++tc) Public [baseType qtc]]
+           else map transConsDecl consdecls)
+ where
+  transConsDecl (FC.Cons (_,cons) _ _ argtypes) =
+    CCons (mainmod,t2bt cons) Public (map transTypeExpr argtypes)
+
+  transTypeExpr (FC.TVar i) = CTVar (transTVar i)
+  transTypeExpr (FC.FuncType t1 t2) =
+    CFuncType (transTypeExpr t1) (transTypeExpr t2)
+  transTypeExpr (FC.TCons (_,tcons) tes) =
+    CTCons (mainmod,t2bt tcons) (map transTypeExpr tes)
+
+  transTVar i = (i,'a':show i)
+
+-- Is the type name an external basic prelude type?
+isBasicExtType :: QName -> Bool
+isBasicExtType (mn,tc) = mn == preludeName && tc `elem` ["Int","Float","Char"]
+
+-- Default value for external basic prelude types.
+defaultValueOfBasicExtType :: String -> CLiteral
+defaultValueOfBasicExtType qn
+  | qn == "Int"   = CIntc   0
+  | qn == "Float" = CFloatc 0.0
+  | qn == "Char"  = CCharc  'A'
+  | otherwise     = error $ "defaultValueOfBasicExtType: unknown type: "++qn
+  
+ctype2BotType :: String -> CTypeExpr -> CTypeExpr
+ctype2BotType _ (CTVar i) = CTVar i
+ctype2BotType mainmod (CFuncType t1 t2) =
+  CFuncType (ctype2BotType mainmod t1) (ctype2BotType mainmod t2)
+ctype2BotType mainmod (CTCons qtc tes) =
+  CTCons (mainmod, t2bt (snd qtc)) (map (ctype2BotType mainmod) tes)
+
+-- Translate a type constructor name to its bottom type constructor name
+t2bt :: String -> String
+t2bt s = "P_" ++ transQN s
+
+-- Create `peval_` operation for a data type with explicit bottom constructors
+-- according to the following scheme:
+{-
+peval_AB :: AB -> P_AB -> P_AB
+peval_AB _ Bot_AB = Bot_AB                 -- no evaluation
+peval_AB A P_A    = P_A
+peval_AB B P_B    = P_B
+
+peval_C :: C -> P_C -> P_C
+peval_C _     Bot_C   = Bot_C              -- no evaluation
+peval_C (C x) (P_C y) = P_C (peval_AB x y)
+
+f_equiv_g x p = peval_C (f x) p <~> peval_C (g x) p
+-}
+genPeval :: String -> FC.TypeDecl -> CFuncDecl
+genPeval _ (FC.TypeSyn _ _ _ _) =
+  error "genPeval: cannot translate type synonyms"
+genPeval mainmod (FC.Type qtc@(_,tc) _ tvars consdecls) =
+  cmtfunc ("Evaluate a `"++tc++"` value up to a partial approxmiation.")
+    (mainmod,"peval_"++transQN tc) 1 Public
+    (foldr1 (~>) (map (\ (a,b) -> CTVar a ~> CTVar b ~> CTVar b)
+                      (zip polyavars polyrvars) ++
+                  [CTCons qtc (map CTVar polyavars),
+                   CTCons (mainmod,t2bt tc) (map CTVar polyrvars),
+                   CTCons (mainmod,t2bt tc) (map CTVar polyrvars)]))
+    (simpleRule (map CPVar (polyavars ++ [(0,"_")]) ++ [CPComb botSym []])
+                (constF botSym) :
+     if isBasicExtType qtc
+       then [valueRule]
+       else map genConsRule consdecls)
+ where
+  botSym = (mainmod,"Bot_"++transQN tc) -- bottom constructor
+  
+  -- variables for polymorphic type arguments:
+  polyavars = [ (i,"a"++show i) | i <- tvars]
+  polyrvars = [ (i,"b"++show i) | i <- tvars]
+  
+  genConsRule (FC.Cons qc@(_,cons) _ _ argtypes) =
+    let args  = [(i,"x"++show i) | i <- [0 .. length argtypes - 1]]
+        pargs = [(i,"y"++show i) | i <- [0 .. length argtypes - 1]]
+        pcons = (mainmod,t2bt cons)
+    in simpleRule (map CPVar polyavars ++
+                   [CPComb qc (map CPVar args), CPComb pcons (map CPVar pargs)])
+         (applyF pcons
+                 (map (\ (e1,e2,te) ->
+                        applyE (ftype2pvalOf mainmod "peval" polyavars te)
+                               [e1,e2])
+                      (zip3 (map CVar args) (map CVar pargs) argtypes)))
+
+  valueRule =
+    let xvar    = (0,"x")
+        yvar    = (1,"y")
+        valcons = (mainmod,"Value_"++tc)
+    in guardedRule [CPVar xvar, CPComb valcons [CPVar yvar]]
+                   [(constF (pre "True"), --applyF (pre "=:=") [CVar xvar, CVar yvar],
+                     applyF valcons [CVar xvar])]
+                   []
+
+-- Create `pvalOf` operation for a data type with explicit bottom constructors
+-- according to the following scheme:
+{-
+pvalOf_AB :: AB -> P_AB
+pvalOf_AB _ = Bot_AB
+pvalOf_AB A = P_A
+pvalOf_AB B = P_B
+
+pvalOf_C :: C -> P_C
+pvalOf_C _     = Bot_C
+pvalOf_C (C x) = P_C (pvalOf_AB x)
+
+f_equiv_g x = pvalOf_C (f x) <~> pvalOf_C (g x)
+-}
+genPValOf :: String -> FC.TypeDecl -> CFuncDecl
+genPValOf _ (FC.TypeSyn _ _ _ _) =
+  error "genPValOf: cannot translate type synonyms"
+genPValOf mainmod (FC.Type qtc@(_,tc) _ tvars consdecls) =
+  cmtfunc ("Map a `"++tc++"` value into all its partial approxmiations.")
+    (mainmod,"pvalOf_"++transQN tc) 1 Public
+    (foldr1 (~>) (map (\ (a,b) -> CTVar a ~> CTVar b)
+                      (zip polyavars polyrvars) ++
+                  [CTCons qtc (map CTVar polyavars),
+                   CTCons (mainmod,t2bt tc) (map CTVar polyrvars)]))
+    (simpleRule (map CPVar (polyavars ++ [(0,"_")]))
+                (constF (mainmod,"Bot_"++transQN tc)) :
+     if isBasicExtType qtc
+       then [valueRule]
+       else map genConsRule consdecls)
+ where
+  -- variables for polymorphic type arguments:
+  polyavars = [ (i,"a"++show i) | i <- tvars]
+  polyrvars = [ (i,"b"++show i) | i <- tvars]
+  
+  genConsRule (FC.Cons qc@(_,cons) _ _ argtypes) =
+    let args = [(i,"x"++show i) | i <- [0 .. length argtypes - 1]]
+    in simpleRule (map CPVar polyavars ++ [CPComb qc (map CPVar args)])
+         (applyF (mainmod,t2bt cons)
+            (map (\ (e,te) ->
+                   applyE (ftype2pvalOf mainmod "pvalOf" polyavars te) [e])
+                 (zip (map CVar args) argtypes)))
+
+  valueRule =
+    let var = (0,"x")
+    in simpleRule [CPVar var] (applyF (mainmod,"Value_"++tc) [CVar var])
+
+-- Translate a FlatCurry type into a corresponding call to `pvalOf`:
+ftype2pvalOf :: String -> String -> [(Int,String)] -> FC.TypeExpr -> CExpr
+ftype2pvalOf mainmod pvalname polyvars (FC.TCons (_,tc) texps) =
+  applyF (mainmod,pvalname++"_"++transQN tc)
+         (map (ftype2pvalOf mainmod pvalname polyvars) texps)
+ftype2pvalOf _ _ _ (FC.FuncType _ _) =
+  error "genPValOf: cannot handle functional types in as constructor args"
+ftype2pvalOf _ _ polyvars (FC.TVar i) =
+  maybe (error "genPValOf: unbound type variable")
+        CVar
+        (find ((==i) . fst) polyvars)
+
+-- Translate an AbstractCurry type into a corresponding call to `pvalOf`:
+ctype2pvalOf :: String -> String -> CTypeExpr -> CExpr
+ctype2pvalOf mainmod pvalname (CTCons (_,tc) texps) =
+  applyF (mainmod,pvalname++"_"++transQN tc)
+         (map (ctype2pvalOf mainmod pvalname) texps)
+ctype2pvalOf _ _ (CFuncType _ _) =
+  error "genPValOf: cannot handle functional types in as constructor args"
+ctype2pvalOf _ _ (CTVar _) = error "genPValOf: unbound type variable"
+
+
+-- Translate an AbstractCurry type declaration into a FlatCurry type decl:
+ctypedecl2ftypedecl :: CTypeDecl -> FC.TypeDecl
+ctypedecl2ftypedecl (CTypeSyn _ _ _ _) =
+  error "ctypedecl2ftypedecl: cannot translate type synonyms"
+ctypedecl2ftypedecl (CNewType _ _ _ _) =
+  error "ctypedecl2ftypedecl: cannot translate newtype"
+ctypedecl2ftypedecl (CType qtc _ tvars consdecls) =
+  FC.Type qtc FC.Public (map fst tvars) (map transConsDecl consdecls)
+ where
+  transConsDecl (CCons qc _ argtypes) =
+    FC.Cons qc (length argtypes) FC.Public (map transTypeExpr argtypes)
+  transConsDecl (CRecord _ _ _) =
+    error "ctypedecl2ftypedecl: cannot translate records"
+
+  transTypeExpr (CTVar (i,_)) = FC.TVar i
+  transTypeExpr (CFuncType t1 t2) =
+    FC.FuncType (transTypeExpr t1) (transTypeExpr t2)
+  transTypeExpr (CTCons qtcons tes) = FC.TCons qtcons (map transTypeExpr tes)
+
+-------------------------------------------------------------------------
 -- Create the main test module containing all tests of all test modules as
--- a Curry program with name `mainmodname`.
+-- a Curry program with name `mainmod`.
 -- The main test module contains a wrapper operation for each test
 -- and a main function to execute these tests.
 -- Furthermore, if PAKCS is used, test data generators
 -- for user-defined types are automatically generated.
 genMainTestModule :: Options -> String -> [TestModule] -> IO ()
-genMainTestModule opts mainmodname modules = do
+genMainTestModule opts mainmod modules = do
   let testtypes = nub (concatMap userTestDataOfModule modules)
   testtypedecls <- collectAllTestTypeDecls [] testtypes
-  let generators   = map (createTestDataGenerator mainmodname) testtypedecls
-      funcs        = concatMap (createTests opts mainmodname) modules ++
+  equvtypedecls <- collectAllTestTypeDecls []
+                     (map (\t->(t,True))
+                          (nub (concatMap equivPropTypes modules)))
+                     >>= return . map fst
+  let bottypes  = map (genBottomType mainmod) equvtypedecls
+      pevalfuns = map (genPeval mainmod) equvtypedecls
+      pvalfuns  = map (genPValOf mainmod) equvtypedecls
+      generators   = map (createTestDataGenerator mainmod)
+                         (testtypedecls ++
+                          map (\td -> (ctypedecl2ftypedecl td,False)) bottypes)
+      funcs        = concatMap (createTests opts mainmod) modules ++
                                generators
-      mainFunction = genMainFunction opts mainmodname
+      mainFunction = genMainFunction opts mainmod
                                      (concatMap propTests modules)
       imports      = nub $ [ easyCheckModule, easyCheckExecModule
                            , searchTreeModule, generatorModule
                            , "AnsiCodes","Maybe","System"] ++
-                           map fst testtypes ++ map testModuleName modules
+                           map (fst . fst) testtypes ++
+                           map testModuleName modules
   appendix <- readFile (packagePath </> "src" </> "TestAppendix.curry")
   writeCurryProgram opts "."
-                    (CurryProg mainmodname imports [] (mainFunction : funcs) [])
+                    (CurryProg mainmod imports bottypes
+                            (mainFunction : funcs ++ pvalfuns ++ pevalfuns) [])
                     appendix
 
 -- Generates the main function which executes all property tests
@@ -795,31 +1088,37 @@ genMainFunction opts testModule tests =
   makeExpr (PropTest (mn, name) _ _) =
     constF (testModule, name ++ "_" ++ modNameToId mn)
   makeExpr (IOTest (mn, name) _) =
-    constF (testModule, name ++ "_" ++modNameToId  mn)
+    constF (testModule, name ++ "_" ++ modNameToId  mn)
+  makeExpr (EquivTest (mn, name) _ _ _ _) =
+    constF (testModule, name ++ "_" ++ modNameToId mn)
 
 -------------------------------------------------------------------------
 -- Collect all type declarations for a given list of type
 -- constructor names, including the type declarations which are
 -- used in these type declarations.
-collectAllTestTypeDecls :: [FC.TypeDecl] -> [QName] -> IO [FC.TypeDecl]
+collectAllTestTypeDecls :: [(FC.TypeDecl,Bool)] -> [(QName,Bool)]
+                        -> IO [(FC.TypeDecl,Bool)]
 collectAllTestTypeDecls tdecls testtypenames = do
   newtesttypedecls <- mapIO getTypeDecl testtypenames
   let alltesttypedecls = tdecls ++ newtesttypedecls
-      newtcons = filter (\ (mn,_) -> mn /= preludeName)
-                        (nub (concatMap allTConsInDecl newtesttypedecls)
-                         \\ map FCG.typeName alltesttypedecls)
+      newtcons = filter (\ ((mn,_),genpart) -> genpart || mn /= preludeName)
+                        (nub (concatMap allTConsInDecl' newtesttypedecls)
+                         \\ map (\(t,p) -> (FCG.typeName t,p)) alltesttypedecls)
   if null newtcons then return alltesttypedecls
                    else collectAllTestTypeDecls alltesttypedecls newtcons
  where
   -- gets the type declaration for a given type constructor
   -- (could be improved by caching programs that are already read)
-  getTypeDecl :: QName -> IO FC.TypeDecl
-  getTypeDecl qt@(mn,_) = do
+  getTypeDecl :: (QName,Bool) -> IO (FC.TypeDecl,Bool)
+  getTypeDecl (qt@(mn,_),genpartial) = do
     fprog <- readFlatCurry mn
     maybe (error $ "Definition of type '" ++ FC.showQNameInModule "" qt ++
                    "' not found!")
-          return
+          (\td -> return (td,genpartial))
           (find (\t -> FCG.typeName t == qt) (FCG.progTypes fprog))
+
+  allTConsInDecl' :: (FC.TypeDecl,Bool) -> [(QName,Bool)]
+  allTConsInDecl' (td,genpart) = map (\t->(t,genpart)) (allTConsInDecl td)
 
   -- compute all type constructors used in a type declaration
   allTConsInDecl :: FC.TypeDecl -> [QName]
@@ -834,38 +1133,63 @@ collectAllTestTypeDecls tdecls testtypenames = do
     FCG.trTypeExpr (\_ -> []) (\tc targs -> tc : concat targs) (++)
 
 -- Creates a test data generator for a given type declaration.
-createTestDataGenerator :: String -> FC.TypeDecl -> CFuncDecl
-createTestDataGenerator mainmodname tdecl = type2genData tdecl
+-- If the flag of the type declaration is `True`, a generator
+-- for partial values is created.
+createTestDataGenerator :: String -> (FC.TypeDecl,Bool) -> CFuncDecl
+createTestDataGenerator mainmod (tdecl,part) = type2genData tdecl
  where
   qt       = FCG.typeName tdecl
   qtString = FC.showQNameInModule "" qt
 
   type2genData (FC.TypeSyn _ _ _ _) =
     error $ "Cannot create generator for type synonym " ++ qtString
-  type2genData (FC.Type _ _ tvars cdecls) =
-    if null cdecls
-    then error $ "Cannot create value generator for type '" ++ qtString ++
-                 "' without constructors!"
-    else CFunc (typename2genopname mainmodname [] qt) (length tvars) Public
-               (foldr (~>) (CTCons searchTreeTC [CTCons qt ctvars])
-                           (map (\v -> CTCons searchTreeTC [v]) ctvars))
-               [simpleRule (map CPVar cvars)
-                  (foldr1 (\e1 e2 -> applyF (generatorModule,"|||") [e1,e2])
-                          (map cons2gen cdecls))]
+  type2genData (FC.Type _ _ tvars cdecls)
+    | null cdecls && (fst qt /= preludeName || not part)
+    = error $ "Cannot create value generator for type '" ++ qtString ++
+              "' without constructors!"
+    | otherwise
+    = cmtfunc
+        ("Generator for " ++ (if part then "partial " else "") ++
+         "`" ++ qtString ++ "` values.")
+        (typename2genopname mainmod [] part qt) (length tvars) Public
+        (foldr (~>) (CTCons searchTreeTC [CTCons qt ctvars])
+                    (map (\v -> CTCons searchTreeTC [v]) ctvars))
+        [simpleRule (map CPVar cvars)
+          (let gencstrs =  foldr1 (\e1 e2 -> applyF choiceGen [e1,e2])
+                                  (map cons2gen cdecls)
+           in if part
+                then applyF choiceGen
+                            [ applyF (generatorModule, "genCons0")
+                                     [constF (pre "failed")]
+                            , if null cdecls
+                                then constF (generatorModule,
+                                             "gen" ++ transQN (snd qt))
+                                else gencstrs ]
+                else gencstrs)]
    where
-    cons2gen (FC.Cons qn ar _ ctypes) =
-      if ar>maxArity
-      then error $ "Test data constructors with more than " ++ show maxArity ++
-                   " arguments are currently not supported!"
-      else applyF (generatorModule, "genCons" ++ show ar)
-                  ([CSymbol qn] ++ map type2gen ctypes)
+    cons2gen (FC.Cons qn@(mn,cn) ar _ ctypes)
+      | ar>maxArity
+      = error $ "Test data constructors with more than " ++ show maxArity ++
+                " arguments are currently not supported!"
+      | not part && mn == mainmod && "Value_" `isPrefixOf` cn
+        -- specific generator for bottom types of external basic types
+        -- like Int (actually, do not generate values in order to reduce
+        -- search space):
+      = applyF (generatorModule, "genCons1")
+               [CSymbol qn,
+                applyF (searchTreeModule,"Value")
+                       [CLit (defaultValueOfBasicExtType (drop 6 cn))]]
+      | otherwise
+      = applyF (generatorModule, "genCons" ++ show ar)
+               ([CSymbol qn] ++ map type2gen ctypes)
 
     type2gen (FC.TVar i) = CVar (i,"a"++show i)
     type2gen (FC.FuncType _ _) =
       error $ "Type '" ++ qtString ++
               "': cannot create value generators for functions!"
     type2gen (FC.TCons qtc argtypes) =
-      applyF (typename2genopname mainmodname [] qtc) (map type2gen argtypes)
+      applyF (typename2genopname mainmod [] part qtc)
+             (map type2gen argtypes)
 
     ctvars = map (\i -> CTVar (i,"a"++show i)) tvars
     cvars  = map (\i -> (i,"a"++show i)) tvars
@@ -873,9 +1197,9 @@ createTestDataGenerator mainmodname tdecl = type2genData tdecl
 -------------------------------------------------------------------------
 -- remove the generated files (except if option "--keep" is set)
 cleanup :: Options -> String -> [TestModule] -> IO ()
-cleanup opts mainmodname modules =
+cleanup opts mainmod modules =
   unless (optKeep opts) $ do
-    removeCurryModule mainmodname
+    removeCurryModule mainmod
     mapIO_ removeCurryModule (map testModuleName modules)
  where
   removeCurryModule modname =
@@ -892,10 +1216,12 @@ showTestStatistics testmodules =
   let numtests  = sumOf (const True) testmodules
       unittests = sumOf isUnitTest   testmodules
       proptests = sumOf isPropTest   testmodules
+      equvtests = sumOf isEquivTest  testmodules
       iotests   = sumOf isIOTest     testmodules
    in "TOTAL NUMBER OF TESTS: " ++ show numtests ++
       " (UNIT: " ++ show unittests ++ ", PROPERTIES: " ++
-      show proptests ++ ", IO: " ++ show iotests ++ ")"
+      show proptests ++ ", EQUIVALENCE: " ++ show equvtests ++
+      ", IO: " ++ show iotests ++ ")"
  where
   sumOf p = foldr (+) 0 . map (length . filter p . propTests)
 
@@ -959,7 +1285,7 @@ main = do
 -------------------------------------------------------------------------
 -- Auxiliaries
 
--- Rename all module references to "Test.Prog" into "Test.EasyCheck"
+-- Rename all module references to "Test.Prop" into "Test.EasyCheck"
 renameProp2EasyCheck :: CurryProg -> CurryProg
 renameProp2EasyCheck prog =
   updCProg id (map rnmMod) id id id
@@ -998,6 +1324,9 @@ searchTreeTC = (searchTreeModule,"SearchTree")
 generatorModule :: String
 generatorModule = "SearchTreeGenerators"
 
+choiceGen :: QName
+choiceGen = (generatorModule,"|||")
+
 -- Writes a Curry module (together with an appendix) to its file.
 writeCurryProgram :: Options -> String -> CurryProg -> String -> IO ()
 writeCurryProgram opts srcdir p appendix = do
@@ -1015,5 +1344,13 @@ containsPPOptionLine = any isOptionLine . lines
  where
    isOptionLine s = "{-# OPTIONS_CYMAKE " `isPrefixOf` s -- -}
                     && "currypp" `isInfixOf` s
+
+tconsOf :: CTypeExpr -> [QName]
+tconsOf (CTVar _) = []
+tconsOf (CFuncType from to) = union (tconsOf from) (tconsOf to)
+tconsOf (CTCons tc argtypes) = union [tc] (unionOn tconsOf argtypes)
+
+unionOn :: (a -> [b]) -> [a] -> [b]
+unionOn f = foldr union [] . map f
 
 -------------------------------------------------------------------------
