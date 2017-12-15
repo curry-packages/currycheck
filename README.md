@@ -12,7 +12,7 @@ and, thus, they are also useful to document the code.
 
 The tool can be directly installed by the command
 
-    > cpm installbin currycheck
+    > cypm install currycheck
 
 This installs the executable `curry-check` in the bin directory of CPM.
 

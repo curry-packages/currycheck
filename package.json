@@ -5,9 +5,11 @@
     "synopsis": "A tool to support automatic testing of Curry programs",
     "category": [ "Testing" ],
     "dependencies": {
+        "base"          : ">= 1.0.0, < 2.0.0",
         "abstract-curry": ">= 2.0.0",
         "flatcurry"     : ">= 2.0.0",
-        "rewriting"     : ">= 2.0.0"
+        "rewriting"     : ">= 2.0.0",
+        "wl-pprint"     : ">= 0.0.1"
     },
     "compilerCompatibility": {
         "pakcs": ">= 2.0.0",
@@ -27,6 +29,9 @@
         },
         { "src-dir": "examples/withVerification",
           "modules": [ "ListProp", "SortSpec" ]
+        },
+        { "src-dir": "examples/equivalent_operations",
+          "modules": [ "SortISortEquiv" ]
         }
     ],
     "documentation": {

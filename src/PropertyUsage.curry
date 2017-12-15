@@ -3,36 +3,48 @@
 --- a Curry program.
 ---
 --- @author Michael Hanus
---- @version October 2016
+--- @version December 2017
 ------------------------------------------------------------------------
 
 module PropertyUsage
-  ( isProperty, isPropType, isPropIOType
+  ( isProperty, isPropType, isPropIOType, isEquivProperty
   , propModule, easyCheckModule, easyCheckExecModule
   )  where
 
 import AbstractCurry.Types
-import AbstractCurry.Select (funcType, resultType, typeOfQualType)
+import AbstractCurry.Select (funcType, resultType, typeOfQualType, funcRules)
 
 ------------------------------------------------------------------------
--- Check whether a function definition is a property,
--- i.e., if the result type is `Prop` or `PropIO`.
+--- Check whether a function definition is a property,
+--- i.e., if the result type is `Prop` or `PropIO`.
 isProperty :: CFuncDecl -> Bool
 isProperty = isPropertyType . typeOfQualType . funcType
  where
   isPropertyType ct = isPropIOType ct || isPropType (resultType ct)
 
--- Is the type expression the type Test.EasyCheck.Prop?
+--- Is the type expression the type Test.EasyCheck.Prop?
 isPropType :: CTypeExpr -> Bool
 isPropType texp = case texp of
   CTCons (mn,tc) -> tc == "Prop" && isCheckModule mn
   _              -> False
 
--- Is the type expression the type Test.EasyCheck.PropIO?
+--- Is the type expression the type Test.EasyCheck.PropIO?
 isPropIOType :: CTypeExpr -> Bool
 isPropIOType texp = case texp of
   CTCons (mn,tc) -> tc == "PropIO" && isCheckModule mn
   _              -> False
+
+--- Check whether a function definition is an equivalence property, i.e.,
+--- has the form `test = f1 <=> f2`. If yes, returns both operations,
+--- otherwise `Nothing` is returned.
+isEquivProperty :: CFuncDecl -> Maybe (CExpr,CExpr)
+isEquivProperty fdecl =
+  case funcRules fdecl of
+    [CRule [] (CSimpleRhs (CApply (CApply (CSymbol prop) e1) e2) [])]
+      -> if isEquivSymbol prop then Just (e1,e2) else Nothing
+    _ -> Nothing
+ where
+  isEquivSymbol (qn,mn) = isCheckModule qn && mn=="<=>"
 
 -- Is the module name Test.Prop or Test.EasyCheck?
 isCheckModule :: String -> Bool
