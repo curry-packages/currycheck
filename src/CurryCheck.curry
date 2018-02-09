@@ -16,38 +16,40 @@
 --- @author Michael Hanus, Jan-Patrick Baye
 --- @version December 2017
 -------------------------------------------------------------------------
+import Unsafe
 
 import AnsiCodes
-import Char                    (toUpper)
+import Char                    ( toUpper )
 import Distribution
-import FilePath                ((</>), pathSeparator, takeDirectory)
+import FilePath                ( (</>), pathSeparator, takeDirectory )
 import GetOpt
 import IO
 import List
-import Maybe                   (fromJust, isJust)
-import ReadNumeric             (readNat)
-import System                  (system, exitWith, getArgs, getPID, getEnviron)
+import Maybe                   ( fromJust, isJust )
+import ReadNumeric             ( readNat )
+import System                  ( system, exitWith, getArgs, getPID, getEnviron )
 
 import AbstractCurry.Types
 import AbstractCurry.Files
 import AbstractCurry.Select
 import AbstractCurry.Build
 import AbstractCurry.Pretty    as ACPretty
-import AbstractCurry.Transform (renameCurryModule, trCTypeExpr
-                               ,updCProg, updQNamesInCProg)
+import AbstractCurry.Transform ( renameCurryModule, trCTypeExpr
+                               , updCProg, updQNamesInCProg )
 import qualified FlatCurry.Types as FC
 import FlatCurry.Files
 import qualified FlatCurry.Goodies as FCG
-import Text.Pretty             (pPrint)
+import Text.Pretty             ( pPrint )
 
-import CheckDetUsage           (checkDetUse, containsDetOperations)
+import AnalysisHelpers         ( getTerminationInfos )
+import CheckDetUsage           ( checkDetUse, containsDetOperations)
 import ContractUsage
-import CurryCheckConfig        (packagePath, packageVersion)
-import DefaultRuleUsage        (checkDefaultRules, containsDefaultRules)
+import CurryCheckConfig        ( packagePath, packageVersion )
+import DefaultRuleUsage        ( checkDefaultRules, containsDefaultRules )
 import PropertyUsage
-import SimplifyPostConds       (simplifyPostConditionsWithTheorems)
+import SimplifyPostConds       ( simplifyPostConditionsWithTheorems )
 import TheoremUsage
-import UsageCheck              (checkBlacklistUse, checkSetUse)
+import UsageCheck              ( checkBlacklistUse, checkSetUse )
 
 --- Maximal arity of check functions and tuples currently supported:
 maxArity :: Int
@@ -58,7 +60,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 15/12/2017)"
+                packageVersion ++ " of 09/02/2018)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -79,6 +81,7 @@ data Options = Options
   , optSpec     :: Bool
   , optDet      :: Bool
   , optProof    :: Bool
+  , optEquiv    :: EquivOption
   , optTime     :: Bool
   , optColor    :: Bool
   , optMainProg :: String
@@ -98,10 +101,15 @@ defaultOptions  = Options
   , optSpec     = True
   , optDet      = True
   , optProof    = True
+  , optEquiv    = Manual
   , optTime     = False
   , optColor    = True
   , optMainProg = ""
   }
+
+--- Options for equivalence tests.
+data EquivOption = Automatic | Manual
+ deriving Eq
 
 -- Definition of actual command line options.
 options :: [OptDescr (Options -> Options)]
@@ -124,6 +132,9 @@ options =
   , Option "d" ["deftype"]
            (ReqArg checkDefType "<t>")
            "type for defaulting polymorphic tests:\nBool | Int | Char | Ordering (default)"
+  , Option "e" ["equivalence"]
+           (ReqArg checkEquivOption "<e>")
+           "option for equivalence tests:\nautomatic | manual (default)"
   , Option "t" ["time"] (NoArg (\opts -> opts { optTime = True }))
            "show run time for executing each property test"
   , Option "" ["nosource"]
@@ -162,6 +173,12 @@ options =
   checkDefType s opts = if s `elem` ["Bool","Int","Char","Ordering"]
                         then opts { optDefType = s }
                         else error "Illegal default type (try `-h' for help)"
+
+  checkEquivOption s opts
+    | ls `isPrefixOf` "AUTOMATIC" = opts { optEquiv = Automatic }
+    | ls `isPrefixOf` "MANUAL"    = opts { optEquiv = Manual    }
+    | otherwise = error "Illegal equivalence option (try `-h' for help)"
+   where ls = map toUpper s
 
 --- Further option processing, e.g., setting coloring mode.
 processOpts :: Options -> IO Options
@@ -233,6 +250,11 @@ isEquivTest :: Test -> Bool
 isEquivTest t = case t of EquivTest _ _ _ _ _ -> True
                           _                   -> False
 
+-- Returns the names of the operations of an equivalence test.
+equivTestOps :: Test -> [QName]
+equivTestOps t = case t of EquivTest _ f1 f2 _ _ -> [f1,f2]
+                           _                     -> []
+
 -- The name of a test:
 getTestName :: Test -> QName
 getTestName (PropTest  n _     _) = n
@@ -300,8 +322,9 @@ equivPropTypes testmod = concatMap equivTypesOf (propTests testmod)
 -------------------------------------------------------------------------
 -- Transform all tests of a module into operations that perform
 -- appropriate calls to EasyCheck:
-createTests :: Options -> String -> TestModule -> [CFuncDecl]
-createTests opts mainmod tm = map createTest (propTests tm)
+createTests :: Options -> (QName -> Bool) -> String -> TestModule
+            -> [CFuncDecl]
+createTests opts terminating mainmod tm = map createTest (propTests tm)
  where
   createTest test =
     cfunc (mainmod, (genTestName $ getTestName test)) 0 Public
@@ -310,12 +333,13 @@ createTests opts mainmod tm = map createTest (propTests tm)
              PropTest  name t _       -> propBody   name t test
              IOTest    name   _       -> ioTestBody name test
              EquivTest name f1 f2 t _ ->
-               -- if test name has suffix "'TERMINATE", the test for terminating
+               -- if test name has suffix "'TERMINATE" or the operations to
+               -- be tested are terminating, the test for terminating
                -- operations is used, otherwise the test for arbitrary
                -- operations (which limits the size of computed results
                -- but might find counter-examples later)
-               -- (TODO: automatic selection by using CASS)
-               if "'TERMINATE" `isSuffixOf` map toUpper (snd name)
+               if "'TERMINATE" `isSuffixOf` map toUpper (snd name) ||
+                  (terminating f1 && terminating f2)
                  then equivBodyTerm f1 f2 t test
                  else equivBodyAny  f1 f2 t test
           )
@@ -1151,6 +1175,10 @@ ctypedecl2ftypedecl (CType qtc _ tvars consdecls _) =
 -- for user-defined types are automatically generated.
 genMainTestModule :: Options -> String -> [TestModule] -> IO ()
 genMainTestModule opts mainmod modules = do
+  let equivtestops = nub (concatMap equivTestOps (concatMap propTests modules))
+  terminfos <- if optEquiv opts == Automatic
+                 then getTerminationInfos (nub (map fst equivtestops))
+                 else return (const False)
   let testtypes = nub (concatMap userTestDataOfModule modules)
   (fcprogs,testtypedecls) <- collectAllTestTypeDecls opts [] [] testtypes
   equvtypedecls <- collectAllTestTypeDecls opts fcprogs []
@@ -1163,7 +1191,7 @@ genMainTestModule opts mainmod modules = do
       generators   = map (createTestDataGenerator mainmod)
                          (testtypedecls ++
                           map (\td -> (ctypedecl2ftypedecl td,False)) bottypes)
-      funcs        = concatMap (createTests opts mainmod) modules ++
+      funcs        = concatMap (createTests opts terminfos mainmod) modules ++
                                generators
       mainFunction = genMainFunction opts mainmod
                                      (concatMap propTests modules)
@@ -1243,10 +1271,10 @@ collectAllTestTypeDecls opts fcprogs tdecls testtypenames = do
   -- gets the type declaration for a given type constructor
   -- (could be improved by caching programs that are already read)
   findTypeDecl :: [FC.Prog] -> (QName,Bool) -> (FC.TypeDecl,Bool)
-  findTypeDecl fcprogs (qt@(mn,_),genpartial) =
+  findTypeDecl fcyprogs (qt@(mn,_),genpartial) =
     let fprog = maybe (error $ "Cannot find module " ++ mn)
                       id
-                      (find (\p -> FCG.progName p == mn) fcprogs)
+                      (find (\p -> FCG.progName p == mn) fcyprogs)
     in maybe (error $ "Definition of type '" ++ FC.showQNameInModule "" qt ++
                       "' not found!")
              (\td -> (td,genpartial))

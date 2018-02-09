@@ -604,7 +604,9 @@ Since this might be a long process, CurryCheck supports
 a faster comparison of operations when it is known
 that they are terminating.
 If the name of a test contains the suffix \code{'TERMINATE},
-then CurryCheck does not iterate over depth-bounds
+CurryCheck assumes that the operations to be tested are terminating,
+i.e., they always yields a result when applied to ground terms.
+In this case, CurryCheck does not iterate over depth-bounds
 but evaluates operations completely.
 For instance, consider the following definition of
 permutation sort (the operations \code{perm} and \code{sorted}
@@ -637,6 +639,13 @@ the following property:
 psort_equiv_isort'TERMINATE = psort <=> (isort :: [Int] -> [Int])
 \end{curry}
 Now a counter example is found by the 21th test.
+
+One can also tell CurryCheck to analyze the operations for termination.
+If CurryCheck is invoked with the option \ccode{-eautomatic} or
+\ccode{--equivalence=automatic}, then it approximates
+the termination behavior of operations with some sufficient criteria.
+If CurryCheck can prove that both operations are terminating,
+it invokes the equivalence check for terminating operations as described above.
 
 
 \subsection{Checking Usage of Specific Operations}
