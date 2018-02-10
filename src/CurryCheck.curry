@@ -36,12 +36,13 @@ import AbstractCurry.Build
 import AbstractCurry.Pretty    as ACPretty
 import AbstractCurry.Transform ( renameCurryModule, trCTypeExpr
                                , updCProg, updQNamesInCProg )
+import Analysis.Termination    ( Productivity(..) )
 import qualified FlatCurry.Types as FC
 import FlatCurry.Files
 import qualified FlatCurry.Goodies as FCG
 import Text.Pretty             ( pPrint )
 
-import AnalysisHelpers         ( getTerminationInfos )
+import AnalysisHelpers         ( getTerminationInfos, getProductivityInfos )
 import CheckDetUsage           ( checkDetUse, containsDetOperations)
 import ContractUsage
 import CurryCheckConfig        ( packagePath, packageVersion )
@@ -108,7 +109,7 @@ defaultOptions  = Options
   }
 
 --- Options for equivalence tests.
-data EquivOption = Automatic | Manual
+data EquivOption = Safe | Automatic | Manual
  deriving Eq
 
 -- Definition of actual command line options.
@@ -134,7 +135,7 @@ options =
            "type for defaulting polymorphic tests:\nBool | Int | Char | Ordering (default)"
   , Option "e" ["equivalence"]
            (ReqArg checkEquivOption "<e>")
-           "option for equivalence tests:\nautomatic | manual (default)"
+           "option for equivalence tests:\nsafe | automatic | manual (default)"
   , Option "t" ["time"] (NoArg (\opts -> opts { optTime = True }))
            "show run time for executing each property test"
   , Option "" ["nosource"]
@@ -175,6 +176,7 @@ options =
                         else error "Illegal default type (try `-h' for help)"
 
   checkEquivOption s opts
+    | ls `isPrefixOf` "SAFE"      = opts { optEquiv = Safe }
     | ls `isPrefixOf` "AUTOMATIC" = opts { optEquiv = Automatic }
     | ls `isPrefixOf` "MANUAL"    = opts { optEquiv = Manual    }
     | otherwise = error "Illegal equivalence option (try `-h' for help)"
@@ -256,22 +258,28 @@ equivTestOps t = case t of EquivTest _ f1 f2 _ _ -> [f1,f2]
                            _                     -> []
 
 -- The name of a test:
-getTestName :: Test -> QName
-getTestName (PropTest  n _     _) = n
-getTestName (IOTest    n       _) = n
-getTestName (EquivTest n _ _ _ _) = n
+testName :: Test -> QName
+testName (PropTest  n _     _) = n
+testName (IOTest    n       _) = n
+testName (EquivTest n _ _ _ _) = n
 
 -- The line number of a test:
-getTestLine :: Test -> Int
-getTestLine (PropTest  _ _     n) = n
-getTestLine (IOTest    _       n) = n
-getTestLine (EquivTest _ _ _ _ n) = n
+testLine :: Test -> Int
+testLine (PropTest  _ _     n) = n
+testLine (IOTest    _       n) = n
+testLine (EquivTest _ _ _ _ n) = n
 
 -- Generates a useful error message for tests (with module and line number)
 genTestMsg :: String -> Test -> String
 genTestMsg file test =
-  snd (getTestName test) ++
-  " (module " ++ file ++ ", line " ++ show (getTestLine test) ++ ")"
+  snd (testName test) ++
+  " (module " ++ file ++ ", line " ++ show (testLine test) ++ ")"
+
+-- Generates the name of a test in the main test module from the test name.
+genTestName :: Test -> String
+genTestName test =
+  let (modName, fName) = testName test
+  in fName ++ "_" ++ modNameToId modName
 
 -------------------------------------------------------------------------
 -- Representation of the information about a module to be tested:
@@ -322,33 +330,46 @@ equivPropTypes testmod = concatMap equivTypesOf (propTests testmod)
 -------------------------------------------------------------------------
 -- Transform all tests of a module into operations that perform
 -- appropriate calls to EasyCheck:
-createTests :: Options -> (QName -> Bool) -> String -> TestModule
-            -> [CFuncDecl]
-createTests opts terminating mainmod tm = map createTest (propTests tm)
+createTests :: Options -> (QName -> Bool) -> (QName -> Productivity) -> String
+            -> TestModule -> [CFuncDecl]
+createTests opts terminating productivity mainmod tm =
+  filter (\fd -> not (null (funcRules fd))) (map createTest (propTests tm))
  where
   createTest test =
-    cfunc (mainmod, (genTestName $ getTestName test)) 0 Public
+    cfunc (mainmod, genTestName test) 0 Public
           (emptyClassType (ioType (maybeType stringType)))
           (case test of
              PropTest  name t _       -> propBody   name t test
              IOTest    name   _       -> ioTestBody name test
              EquivTest name f1 f2 t _ ->
-               -- if test name has suffix "'TERMINATE" or the operations to
-               -- be tested are terminating, the test for terminating
-               -- operations is used, otherwise the test for arbitrary
-               -- operations (which limits the size of computed results
-               -- but might find counter-examples later)
+               -- if the test name has suffix "'TERMINATE" or the operations
+               -- to be tested are terminating, the test for terminating
+               -- operations is used:
                if "'TERMINATE" `isSuffixOf` map toUpper (snd name) ||
-                  (terminating f1 && terminating f2)
+                  (isTerminating f1 && isTerminating f2)
                  then equivBodyTerm f1 f2 t test
-                 else equivBodyAny  f1 f2 t test
+                 else
+                   -- if the test name has suffix "'PRODUCTIVE" or the
+                   -- operations to be tested are productive,
+                   -- the test for arbitrary operations is used
+                   -- (which limits the size of computed
+                   -- results but might find counter-examples later),
+                   -- otherwise the test is omitted if we are in the "safe"
+                   -- mode:
+                   if "'PRODUCTIVE" `isSuffixOf` map toUpper (snd name) ||
+                      optEquiv opts /= Safe ||
+                      (isProductive f1 && isProductive f2)
+                     then equivBodyAny f1 f2 t test
+                     else []
           )
 
+  isTerminating f = terminating f || productivity f == Terminating
+  
+  isProductive f = productivity f `notElem` [NoInfo, Looping]
+  
   msgOf test = string2ac $ genTestMsg (orgModuleName tm) test
 
   testmname = testModuleName tm
-
-  genTestName (modName, fName) = fName ++ "_" ++ modNameToId modName
 
   easyCheckFuncName arity =
     if arity>maxArity
@@ -1173,17 +1194,20 @@ ctypedecl2ftypedecl (CType qtc _ tvars consdecls _) =
 -- and a main function to execute these tests.
 -- Furthermore, if PAKCS is used, test data generators
 -- for user-defined types are automatically generated.
-genMainTestModule :: Options -> String -> [TestModule] -> IO ()
-genMainTestModule opts mainmod modules = do
-  let equivtestops = nub (concatMap equivTestOps (concatMap propTests modules))
+genMainTestModule :: Options -> String -> [TestModule] -> IO [Test]
+genMainTestModule opts mainmod testmods = do
+  let equivtestops = nub (concatMap equivTestOps (concatMap propTests testmods))
   terminfos <- if optEquiv opts == Automatic
                  then getTerminationInfos (nub (map fst equivtestops))
                  else return (const False)
-  let testtypes = nub (concatMap userTestDataOfModule modules)
+  prodinfos <- if optEquiv opts == Safe
+                 then getProductivityInfos (nub (map fst equivtestops))
+                 else return (const NoInfo)
+  let testtypes = nub (concatMap userTestDataOfModule testmods)
   (fcprogs,testtypedecls) <- collectAllTestTypeDecls opts [] [] testtypes
   equvtypedecls <- collectAllTestTypeDecls opts fcprogs []
                      (map (\t->(t,True))
-                          (nub (concatMap equivPropTypes modules)))
+                          (nub (concatMap equivPropTypes testmods)))
                      >>= return . map fst . snd
   let bottypes  = map (genBottomType mainmod) equvtypedecls
       pevalfuns = map (genPeval mainmod) equvtypedecls
@@ -1191,25 +1215,33 @@ genMainTestModule opts mainmod modules = do
       generators   = map (createTestDataGenerator mainmod)
                          (testtypedecls ++
                           map (\td -> (ctypedecl2ftypedecl td,False)) bottypes)
-      funcs        = concatMap (createTests opts terminfos mainmod) modules ++
-                               generators
-      mainFunction = genMainFunction opts mainmod
-                                     (concatMap propTests modules)
+      testfuncs    = concatMap (createTests opts terminfos prodinfos mainmod)
+                               testmods
+      mainFunction = genMainFunction opts mainmod testfuncs
+                             --        (concatMap propTests testmods)
       imports      = nub $ [ easyCheckModule, easyCheckExecModule
                            , searchTreeModule, generatorModule
                            , "AnsiCodes","Maybe","System","Profile"] ++
                            map (fst . fst) testtypes ++
-                           map testModuleName modules
+                           map testModuleName testmods
   appendix <- readFile (packagePath </> "src" </> "TestAppendix.curry")
   writeCurryProgram opts "."
     (CurryProg mainmod imports Nothing [] [] bottypes
-               (mainFunction : funcs ++ pvalfuns ++ pevalfuns) [])
+               (mainFunction : testfuncs ++ generators ++ pvalfuns ++ pevalfuns)
+               [])
     appendix
+  let (finaltests,droppedtests) =
+         partition ((`elem` map (snd . funcName) testfuncs) . genTestName)
+                   (concatMap propTests testmods)
+  unless (null droppedtests) $ putStrIfNormal opts $
+    "\nPOSSIBLY NON-TERMINATING TESTS REMOVED: " ++
+    unwords (map (snd . testName) droppedtests) ++ "\n"
+  return finaltests
 
 -- Generates the main function which executes all property tests
 -- of all test modules.
-genMainFunction :: Options -> String -> [Test] -> CFuncDecl
-genMainFunction opts testModule tests =
+genMainFunction :: Options -> String -> [CFuncDecl] -> CFuncDecl
+genMainFunction opts testModule testfuncs =
   CFunc (testModule, "main") 0 Public (emptyClassType (ioType unitType))
         [simpleRule [] body]
  where
@@ -1222,21 +1254,11 @@ genMainFunction opts testModule tests =
           applyF (testModule, "runPropertyTests")
                  [constF (pre (if optColor opts then "True" else "False")),
                   constF (pre (if optTime  opts then "True" else "False")),
-                  easyCheckExprs]
+                  list2ac $ map (constF . funcName) testfuncs]
      , CSExpr $ applyF (pre "when")
                   [applyF (pre "/=") [cvar "x1", cInt 0],
                    applyF ("System", "exitWith") [cvar "x1"]]
      ]
-
-  easyCheckExprs = list2ac $ map makeExpr tests
-
-  makeExpr :: Test -> CExpr
-  makeExpr (PropTest (mn, name) _ _) =
-    constF (testModule, name ++ "_" ++ modNameToId mn)
-  makeExpr (IOTest (mn, name) _) =
-    constF (testModule, name ++ "_" ++ modNameToId  mn)
-  makeExpr (EquivTest (mn, name) _ _ _ _) =
-    constF (testModule, name ++ "_" ++ modNameToId mn)
 
 -------------------------------------------------------------------------
 -- Collect all type declarations for a given list of type
@@ -1376,19 +1398,19 @@ cleanup opts mainmod modules =
     system $ "rm -f " ++ srcfilename
 
 -- Show some statistics about number of tests:
-showTestStatistics :: [TestModule] -> String
-showTestStatistics testmodules =
-  let numtests  = sumOf (const True) testmodules
-      unittests = sumOf isUnitTest   testmodules
-      proptests = sumOf isPropTest   testmodules
-      equvtests = sumOf isEquivTest  testmodules
-      iotests   = sumOf isIOTest     testmodules
+showTestStatistics :: [Test] -> String
+showTestStatistics tests =
+  let numtests  = sumOf (const True)
+      unittests = sumOf isUnitTest  
+      proptests = sumOf isPropTest  
+      equvtests = sumOf isEquivTest 
+      iotests   = sumOf isIOTest    
    in "TOTAL NUMBER OF TESTS: " ++ show numtests ++
       " (UNIT: " ++ show unittests ++ ", PROPERTIES: " ++
       show proptests ++ ", EQUIVALENCE: " ++ show equvtests ++
       ", IO: " ++ show iotests ++ ")"
  where
-  sumOf p = foldr (+) 0 . map (length . filter p . propTests)
+  sumOf p = length . filter p $ tests
 
 -------------------------------------------------------------------------
 main :: IO ()
@@ -1418,7 +1440,7 @@ main = do
     putStrIfNormal opts $ withColor opts blue $
                           "Generating main test module '"++testmodname++"'..."
     putStrIfVerbose opts "\n"
-    genMainTestModule opts testmodname finaltestmodules
+    finaltests <- genMainTestModule opts testmodname finaltestmodules
     showGeneratedModule opts "main test" testmodname
     putStrIfNormal opts $ withColor opts blue $ "and compiling it...\n"
     ecurrypath <- getEnviron "CURRYPATH"
@@ -1436,7 +1458,7 @@ main = do
     ret <- system runcmd
     cleanup opts testmodname finaltestmodules
     unless (isQuiet opts || ret /= 0) $
-      putStrLn $ withColor opts green $ showTestStatistics finaltestmodules
+      putStrLn $ withColor opts green $ showTestStatistics finaltests
     exitWith ret
  where
   showStaticErrors opts errs = putStrLn $ withColor opts red $

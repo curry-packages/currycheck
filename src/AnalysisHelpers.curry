@@ -1,6 +1,8 @@
 -- Some auxiliary operations to analyze programs with CASS
 
-module AnalysisHelpers where
+module AnalysisHelpers
+  ( getTerminationInfos, getProductivityInfos )
+ where
 
 import List ( intercalate, isSuffixOf )
 
@@ -8,11 +10,12 @@ import AbstractCurry.Types  ( QName )
 import Analysis.Types       ( Analysis )
 import Analysis.ProgInfo    ( ProgInfo, emptyProgInfo, combineProgInfo
                             , lookupProgInfo)
-import Analysis.Termination ( terminationAnalysis )
+import Analysis.Termination ( Productivity(..), productivityAnalysis
+                            , terminationAnalysis )
 import CASS.Server          ( analyzeGeneric )
 
--- Analyze termination behavior for a list of modules.
--- If the module is a `_PUBLIC` module, we analyze the original module
+-- Analyze a list of module for their termination behavior.
+-- If a module is a `_PUBLIC` module, we analyze the original module
 -- and map these results to the `_PUBLIC` names, in order to support
 -- caching of analysis results for the original modules.
 getTerminationInfos :: [String] -> IO (QName -> Bool)
@@ -20,12 +23,26 @@ getTerminationInfos mods = do
   ainfo <- analyzeModules "termination" terminationAnalysis
                           (map dropPublicSuffix mods)
   return (\qn -> maybe False id (lookupProgInfo (dropPublicQName qn) ainfo))
- where
-  dropPublicSuffix s = if "_PUBLIC" `isSuffixOf` s
-                         then take (length s - 7) s
-                         else s
 
-  dropPublicQName (m,f) = (dropPublicSuffix m, f)
+-- Analyze a list of module for their productivity behavior.
+-- If a module is a `_PUBLIC` module, we analyze the original module
+-- and map these results to the `_PUBLIC` names, in order to support
+-- caching of analysis results for the original modules.
+getProductivityInfos :: [String] -> IO (QName -> Productivity)
+getProductivityInfos mods = do
+  ainfo <- analyzeModules "productivity" productivityAnalysis
+                          (map dropPublicSuffix mods)
+  return (\qn -> maybe NoInfo id (lookupProgInfo (dropPublicQName qn) ainfo))
+
+
+dropPublicSuffix :: String -> String
+dropPublicSuffix s = if "_PUBLIC" `isSuffixOf` s
+                       then take (length s - 7) s
+                       else s
+
+dropPublicQName :: QName -> QName
+dropPublicQName (m,f) = (dropPublicSuffix m, f)
+
 
 -- Analyze a list of modules with some static program analysis.
 -- Returns the combined analysis information.

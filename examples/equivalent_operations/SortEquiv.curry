@@ -32,7 +32,7 @@ isort xs = idSorted (perm xs)
 -- contexts):
 
 -- In PAKCS, the counter example is reported by the 274th test:
-psort_equiv_isort = psort <=> (isort :: [Int] -> [Int])
+psort_equiv_isort'PRODUCTIVE = psort <=> (isort :: [Int] -> [Int])
 
 -- In PAKCS, the counter example is reported by the 21th test:
 psort_equiv_isort'TERMINATE = psort <=> (isort :: [Int] -> [Int])
