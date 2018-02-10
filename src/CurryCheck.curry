@@ -14,26 +14,23 @@
 ---   (together with possible preconditions).
 ---
 --- @author Michael Hanus, Jan-Patrick Baye
---- @version December 2017
+--- @version February 2018
 -------------------------------------------------------------------------
-import Unsafe
 
 import AnsiCodes
 import Char                    ( toUpper )
 import Distribution
 import FilePath                ( (</>), pathSeparator, takeDirectory )
 import GetOpt
-import IO
 import List
 import Maybe                   ( fromJust, isJust )
-import ReadNumeric             ( readNat )
 import System                  ( system, exitWith, getArgs, getPID, getEnviron )
 
 import AbstractCurry.Types
 import AbstractCurry.Files
 import AbstractCurry.Select
 import AbstractCurry.Build
-import AbstractCurry.Pretty    as ACPretty
+import qualified AbstractCurry.Pretty as ACPretty
 import AbstractCurry.Transform ( renameCurryModule, trCTypeExpr
                                , updCProg, updQNamesInCProg )
 import Analysis.Termination    ( Productivity(..) )
@@ -42,170 +39,32 @@ import FlatCurry.Files
 import qualified FlatCurry.Goodies as FCG
 import Text.Pretty             ( pPrint )
 
-import AnalysisHelpers         ( getTerminationInfos, getProductivityInfos )
+import CC.AnalysisHelpers      ( getTerminationInfos, getProductivityInfos )
+import CC.Config               ( packagePath, packageVersion )
+import CC.Options
 import CheckDetUsage           ( checkDetUse, containsDetOperations)
 import ContractUsage
-import CurryCheckConfig        ( packagePath, packageVersion )
 import DefaultRuleUsage        ( checkDefaultRules, containsDefaultRules )
 import PropertyUsage
 import SimplifyPostConds       ( simplifyPostConditionsWithTheorems )
 import TheoremUsage
 import UsageCheck              ( checkBlacklistUse, checkSetUse )
 
---- Maximal arity of check functions and tuples currently supported:
-maxArity :: Int
-maxArity = 5
-
 -- Banner of this tool:
 ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 09/02/2018)"
+                packageVersion ++ " of 10/02/2018)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
 usageText :: String
 usageText = usageInfo ("Usage: curry check [options] <module names>\n") options
 
--------------------------------------------------------------------------
--- Representation of command line options.
-data Options = Options
-  { optHelp     :: Bool
-  , optVerb     :: Int
-  , optKeep     :: Bool
-  , optMaxTest  :: Int
-  , optMaxFail  :: Int
-  , optDefType  :: String
-  , optSource   :: Bool
-  , optProp     :: Bool
-  , optSpec     :: Bool
-  , optDet      :: Bool
-  , optProof    :: Bool
-  , optEquiv    :: EquivOption
-  , optTime     :: Bool
-  , optColor    :: Bool
-  , optMainProg :: String
-  }
-
--- Default command line options.
-defaultOptions :: Options
-defaultOptions  = Options
-  { optHelp     = False
-  , optVerb     = 1
-  , optKeep     = False
-  , optMaxTest  = 0
-  , optMaxFail  = 0
-  , optDefType  = "Ordering"
-  , optSource   = True
-  , optProp     = True
-  , optSpec     = True
-  , optDet      = True
-  , optProof    = True
-  , optEquiv    = Manual
-  , optTime     = False
-  , optColor    = True
-  , optMainProg = ""
-  }
-
---- Options for equivalence tests.
-data EquivOption = Safe | Automatic | Manual
- deriving Eq
-
--- Definition of actual command line options.
-options :: [OptDescr (Options -> Options)]
-options =
-  [ Option "h?" ["help"] (NoArg (\opts -> opts { optHelp = True }))
-           "print help and exit"
-  , Option "q" ["quiet"] (NoArg (\opts -> opts { optVerb = 0 }))
-           "run quietly (no output, only exit code)"
-  , Option "v" ["verbosity"]
-            (OptArg (maybe (checkVerb 3) (safeReadNat checkVerb)) "<n>")
-            "verbosity level:\n0: quiet (same as `-q')\n1: show test names (default)\n2: show more information about test generation\n3: show test data (same as `-v')\n4: show also some debug information"
-  , Option "k" ["keep"] (NoArg (\opts -> opts { optKeep = True }))
-           "keep temporarily generated program files"
-  , Option "m" ["maxtests"]
-           (ReqArg (safeReadNat (\n opts -> opts { optMaxTest = n })) "<n>")
-           "maximal number of tests (default: 100)"
-  , Option "f" ["maxfails"]
-           (ReqArg (safeReadNat (\n opts -> opts { optMaxFail = n })) "<n>")
-           "maximal number of condition failures\n(default: 10000)"
-  , Option "d" ["deftype"]
-           (ReqArg checkDefType "<t>")
-           "type for defaulting polymorphic tests:\nBool | Int | Char | Ordering (default)"
-  , Option "e" ["equivalence"]
-           (ReqArg checkEquivOption "<e>")
-           "option for equivalence tests:\nsafe | automatic | manual (default)"
-  , Option "t" ["time"] (NoArg (\opts -> opts { optTime = True }))
-           "show run time for executing each property test"
-  , Option "" ["nosource"]
-           (NoArg (\opts -> opts { optSource = False }))
-           "do not perform source code checks"
-  , Option "" ["noprop"]
-           (NoArg (\opts -> opts { optProp = False }))
-           "do not perform any property tests"
-  , Option "" ["nospec"]
-           (NoArg (\opts -> opts { optSpec = False }))
-           "do not perform specification/postcondition tests"
-  , Option "" ["nodet"]
-           (NoArg (\opts -> opts { optDet = False }))
-           "do not perform determinism tests"
-  , Option "" ["noproof"]
-           (NoArg (\opts -> opts { optProof = False }))
-           "do not consider proofs to simplify properties"
-  , Option "" ["nocolor"]
-           (NoArg (\opts -> opts { optColor = False }))
-           "do not use colors when showing tests"
-  , Option "" ["mainprog"]
-           (ReqArg (\s opts -> opts { optMainProg = s }) "<prog>")
-           "name of generated main program\n(default: TEST<pid>.curry)"
-  ]
- where
-  safeReadNat opttrans s opts =
-   let numError = error "Illegal number argument (try `-h' for help)" in
-    maybe numError
-          (\ (n,rs) -> if null rs then opttrans n opts else numError)
-          (readNat s)
-
-  checkVerb n opts = if n>=0 && n<5
-                     then opts { optVerb = n }
-                     else error "Illegal verbosity level (try `-h' for help)"
-
-  checkDefType s opts = if s `elem` ["Bool","Int","Char","Ordering"]
-                        then opts { optDefType = s }
-                        else error "Illegal default type (try `-h' for help)"
-
-  checkEquivOption s opts
-    | ls `isPrefixOf` "SAFE"      = opts { optEquiv = Safe }
-    | ls `isPrefixOf` "AUTOMATIC" = opts { optEquiv = Automatic }
-    | ls `isPrefixOf` "MANUAL"    = opts { optEquiv = Manual    }
-    | otherwise = error "Illegal equivalence option (try `-h' for help)"
-   where ls = map toUpper s
-
---- Further option processing, e.g., setting coloring mode.
-processOpts :: Options -> IO Options
-processOpts opts = do
-  isterm <- hIsTerminalDevice stdout
-  return $ if isterm then opts else opts { optColor = False}
-
-isQuiet :: Options -> Bool
-isQuiet opts = optVerb opts == 0
-
---- Print second argument if verbosity level is not quiet:
-putStrIfNormal :: Options -> String -> IO ()
-putStrIfNormal opts s = unless (isQuiet opts) (putStr s >> hFlush stdout)
-
---- Print second argument if verbosity level > 1:
-putStrIfVerbose :: Options -> String -> IO ()
-putStrIfVerbose opts s = when (optVerb opts > 1) (putStr s >> hFlush stdout)
-
---- Print second argument if verbosity level > 3:
-putStrLnIfDebug :: Options -> String -> IO ()
-putStrLnIfDebug opts s = when (optVerb opts > 3) (putStrLn s >> hFlush stdout)
-
---- use some coloring (from library AnsiCodes) if color option is on:
-withColor :: Options -> (String -> String) -> String -> String
-withColor opts coloring = if optColor opts then coloring else id
+--- Maximal arity of check functions and tuples currently supported:
+maxArity :: Int
+maxArity = 5
 
 -------------------------------------------------------------------------
 -- The names of suffixes added to specific tests.
@@ -1198,10 +1057,10 @@ genMainTestModule :: Options -> String -> [TestModule] -> IO [Test]
 genMainTestModule opts mainmod testmods = do
   let equivtestops = nub (concatMap equivTestOps (concatMap propTests testmods))
   terminfos <- if optEquiv opts == Automatic
-                 then getTerminationInfos (nub (map fst equivtestops))
+                 then getTerminationInfos opts (nub (map fst equivtestops))
                  else return (const False)
   prodinfos <- if optEquiv opts == Safe
-                 then getProductivityInfos (nub (map fst equivtestops))
+                 then getProductivityInfos opts (nub (map fst equivtestops))
                  else return (const NoInfo)
   let testtypes = nub (concatMap userTestDataOfModule testmods)
   (fcprogs,testtypedecls) <- collectAllTestTypeDecls opts [] [] testtypes

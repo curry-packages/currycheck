@@ -17,7 +17,7 @@
         "pakcs": ">= 2.0.0",
         "kics2": ">= 2.0.0"
     },
-    "configModule": "CurryCheckConfig",
+    "configModule": "CC.Config",
     "executable": {
         "name": "curry-check",
         "main": "CurryCheck"

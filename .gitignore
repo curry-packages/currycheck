@@ -2,4 +2,4 @@
 cdoc/
 .curry
 .cpm
-src/CurryCheckConfig.curry
+src/CC/Config.curry
