@@ -550,11 +550,12 @@ sortSatisfiesSpecification x = sort x <~> sort'spec x
 
 \subsection{Checking Equivalence of Operations}
 
-CurryCheck supports also equivalence checks for operations.
+CurryCheck supports also equivalence tests for operations.
 Two operations are considered as \emph{equivalent} if they
 can be replaced by each other in any possible context
-without changing the computed values (see \cite{AntoyHanus12PADL}
-for a precise definition).
+without changing the computed values (this is also called
+\emph{contextual equivalence} and precisely defined in
+\cite{AntoyHanus12PADL} for functional logic programs).
 For instance, the Boolean operations
 \begin{curry}
 f1 :: Bool -> Bool               f2 :: Bool -> Bool
@@ -575,16 +576,16 @@ property combinator \code{<=>}:
 f1_equiv_f2 = f1 <=> f2
 g1_equiv_g2 = g1 <=> g2
 \end{curry}
-Each argument of this combinator must be a defined operation
+The left and right argument of this combinator must be a defined operation
 or a defined operation with a type annotation in order to specify
 the argument types used for checking this property.
 
 CurryCheck transforms such properties into properties
 where both operations are compared w.r.t.\ all partial
 values and partial results.
-The details are described in an upcoming paper.
+The details are described in \cite{AntoyHanus18FLOPS}.
 
-It should be noted that CurryCheck can also check
+It should be noted that CurryCheck can test
 the equivalence of non-terminating operations provided
 that they are \emph{productive}, i.e., always generate
 (outermost) constructors after a finite number of steps
@@ -598,8 +599,8 @@ ints2 n = n : ints2 (n+2)
 -- This property will be falsified by CurryCheck:
 ints1_equiv_ints2 = ints1 <=> ints2
 \end{curry}
-This is done by guessing depth-bounds and comparing the results
-of both operations up to this depth-bound.
+This is done by iteratively guessing depth-bounds, computing both operations
+up to these depth-bounds, and comparing the computed results.
 Since this might be a long process, CurryCheck supports
 a faster comparison of operations when it is known
 that they are terminating.
@@ -625,7 +626,7 @@ isort xs = idSorted (perm xs)
        idSorted [x]             = [x]
        idSorted (x:y:ys) | x<=y = x : idSorted (y:ys)
 \end{curry}
-We can check the equivalence of both operations by
+We can test the equivalence of both operations by
 specializing both operations on some ground type (otherwise,
 the type checker reports an error due to an unspecified
 type \code{Ord} context):
@@ -640,12 +641,39 @@ psort_equiv_isort'TERMINATE = psort <=> (isort :: [Int] -> [Int])
 \end{curry}
 Now a counter example is found by the 21th test.
 
-One can also tell CurryCheck to analyze the operations for termination.
-If CurryCheck is invoked with the option \ccode{-eautomatic} or
-\ccode{--equivalence=automatic}, then it approximates
-the termination behavior of operations with some sufficient criteria.
-If CurryCheck can prove that both operations are terminating,
-it invokes the equivalence check for terminating operations as described above.
+Instead of annotating the property name to use more efficient equivalence
+tests for terminating operations, one can also ask CurryCheck
+to analyze the operations in order to safely approximate
+termination or productivity properties.
+For this purpose, one can call CurryCheck with the option
+\ccode{--equivalence=$equiv$} or \ccode{-e$equiv$}.
+The parameter $equiv$ determines the mode for equivalence checking
+which must have one of the following values (or a prefix of them):
+%
+\begin{description}
+\item[\code{manual}:]
+This is the default mode. In this mode, all equivalence tests
+are executed with first technique described above, unless
+the name of the test has the suffix \code{'TERMINATE}.
+\item[\code{autoselect}:]
+This mode automatically selects the improved transformation
+for terminating operations by a program analysis, i.e.,
+if it can be proved that both operations are terminating, then
+the equivalence test for terminating operations is used.
+It is also used when the name of the test has the suffix \code{'TERMINATE}.
+\item[\code{safe}:]
+This mode analyzes the productivity behavior of operations.
+If it can be proved that both operations are terminating
+or the test name has the suffix \code{'TERMINATE}, then
+the more efficient equivalence test for terminating operations is used.
+If it can be proved that both operations are productive
+or the test name has the suffix \code{'PRODUCTIVE}, then
+the first general test technique is used.
+Otherwise, the equivalence property is \emph{not} tested.
+Thus, this mode is useful if one wants to ensure that all
+equivalence tests always terminate (provided that the additional
+user annotations are correct).
+\end{description}
 
 
 \subsection{Checking Usage of Specific Operations}

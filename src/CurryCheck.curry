@@ -55,7 +55,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 10/02/2018)"
+                packageVersion ++ " of 11/02/2018)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -1056,7 +1056,7 @@ ctypedecl2ftypedecl (CType qtc _ tvars consdecls _) =
 genMainTestModule :: Options -> String -> [TestModule] -> IO [Test]
 genMainTestModule opts mainmod testmods = do
   let equivtestops = nub (concatMap equivTestOps (concatMap propTests testmods))
-  terminfos <- if optEquiv opts == Automatic
+  terminfos <- if optEquiv opts == Autoselect
                  then getTerminationInfos opts (nub (map fst equivtestops))
                  else return (const False)
   prodinfos <- if optEquiv opts == Safe

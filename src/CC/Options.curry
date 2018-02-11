@@ -51,7 +51,7 @@ defaultOptions  = Options
   }
 
 --- Options for equivalence tests.
-data EquivOption = Safe | Automatic | Manual
+data EquivOption = Safe | Autoselect | Manual
  deriving Eq
 
 -- Definition of actual command line options.
@@ -77,7 +77,7 @@ options =
            "type for defaulting polymorphic tests:\nBool | Int | Char | Ordering (default)"
   , Option "e" ["equivalence"]
            (ReqArg checkEquivOption "<e>")
-           "option for equivalence tests:\nsafe | automatic | manual (default)"
+           "option for equivalence tests:\nsafe | autoselect | manual (default)"
   , Option "t" ["time"] (NoArg (\opts -> opts { optTime = True }))
            "show run time for executing each property test"
   , Option "" ["nosource"]
@@ -118,9 +118,9 @@ options =
                         else error "Illegal default type (try `-h' for help)"
 
   checkEquivOption s opts
-    | ls `isPrefixOf` "SAFE"      = opts { optEquiv = Safe }
-    | ls `isPrefixOf` "AUTOMATIC" = opts { optEquiv = Automatic }
-    | ls `isPrefixOf` "MANUAL"    = opts { optEquiv = Manual    }
+    | ls `isPrefixOf` "SAFE"       = opts { optEquiv = Safe }
+    | ls `isPrefixOf` "AUTOSELECT" = opts { optEquiv = Autoselect }
+    | ls `isPrefixOf` "MANUAL"     = opts { optEquiv = Manual }
     | otherwise = error "Illegal equivalence option (try `-h' for help)"
    where ls = map toUpper s
 
