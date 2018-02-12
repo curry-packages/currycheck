@@ -245,27 +245,27 @@ genTestFuncs opts terminating productivity mainmod tm =
 
   -- Operation equivalence test for terminating operations:
   equivBodyTerm f1 f2 texp test =
-    let xvar = (1,"x")
+    let xvars = map (\i -> (i,"x"++show i)) [1 .. arityOfType texp]
         pvalOfFunc = ctype2pvalOf mainmod "pvalOf" (resultType texp)
     in propOrEquivBody (map (\t -> (t,True)) (argTypes texp)) test
-         (CLambda [CPVar xvar]
+         (cLambda (map CPVar xvars)
             (applyF (easyCheckModule,"<~>")
-                    [applyE pvalOfFunc [applyF f1 [CVar xvar]],
-                     applyE pvalOfFunc [applyF f2 [CVar xvar]]]))
+                    [applyE pvalOfFunc [applyF f1 (map CVar xvars)],
+                     applyE pvalOfFunc [applyF f2 (map CVar xvars)]]))
 
   -- Operation equivalence test for arbitrary operations:
   equivBodyAny f1 f2 texp test =
-    let xvar = (1,"x")
-        pvar = (2,"p")
+    let xvars = map (\i -> (i,"x"++show i)) [1 .. arityOfType texp]
+        pvar  = (2,"p")
         pvalOfFunc = ctype2pvalOf mainmod "peval" (resultType texp)
     in propOrEquivBody
          (map (\t -> (t,True)) (argTypes texp) ++
           [(ctype2BotType mainmod  (resultType texp), False)])
          test
-         (CLambda [CPVar xvar, CPVar pvar]
+         (CLambda (map CPVar xvars ++ [CPVar pvar])
             (applyF (easyCheckModule,"<~>")
-                    [applyE pvalOfFunc [applyF f1 [CVar xvar], CVar pvar],
-                     applyE pvalOfFunc [applyF f2 [CVar xvar], CVar pvar]]))
+               [applyE pvalOfFunc [applyF f1 (map CVar xvars), CVar pvar],
+                applyE pvalOfFunc [applyF f2 (map CVar xvars), CVar pvar]]))
 
   propBody qname texp test =
     propOrEquivBody (map (\t -> (t,False)) (argTypes texp))
@@ -1425,5 +1425,11 @@ showCTypeExpr = pPrint . ACPretty.ppCTypeExpr ACPretty.defaultOptions
 -- Pretty print an AbstractCurry expression:
 showCExpr :: CExpr -> String
 showCExpr = pPrint . ACPretty.ppCExpr ACPretty.defaultOptions
+
+-- Builds a lambda abstraction. If the argument list is empty,
+-- it builts an expression.
+cLambda :: [CPattern] -> CExpr -> CExpr
+cLambda pats body | null pats = body
+                  | otherwise = CLambda pats body
 
 -------------------------------------------------------------------------
