@@ -138,8 +138,8 @@ putStrIfNormal :: Options -> String -> IO ()
 putStrIfNormal opts s = unless (isQuiet opts) (putStr s >> hFlush stdout)
 
 --- Print second argument if verbosity level > 1:
-putStrIfVerbose :: Options -> String -> IO ()
-putStrIfVerbose opts s = when (optVerb opts > 1) (putStr s >> hFlush stdout)
+putStrIfDetails :: Options -> String -> IO ()
+putStrIfDetails opts s = when (optVerb opts > 1) (putStr s >> hFlush stdout)
 
 --- Print second argument if verbosity level > 3:
 putStrLnIfDebug :: Options -> String -> IO ()

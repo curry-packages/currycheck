@@ -189,38 +189,45 @@ equivPropTypes testmod = concatMap equivTypesOf (propTests testmod)
 -------------------------------------------------------------------------
 -- Transform all tests of a module into operations that perform
 -- appropriate calls to EasyCheck:
-createTests :: Options -> (QName -> Bool) -> (QName -> Productivity) -> String
-            -> TestModule -> [CFuncDecl]
-createTests opts terminating productivity mainmod tm =
-  filter (\fd -> not (null (funcRules fd))) (map createTest (propTests tm))
+genTestFuncs :: Options -> (QName -> Bool) -> (QName -> Productivity) -> String
+             -> TestModule -> IO [CFuncDecl]
+genTestFuncs opts terminating productivity mainmod tm =
+  liftM (filter (not . null . funcRules))
+        (mapM genTestFunc (propTests tm))
  where
-  createTest test =
-    cfunc (mainmod, genTestName test) 0 Public
-          (emptyClassType (ioType (maybeType stringType)))
-          (case test of
-             PropTest  name t _       -> propBody   name t test
-             IOTest    name   _       -> ioTestBody name test
-             EquivTest name f1 f2 t _ ->
-               -- if the test name has suffix "'TERMINATE" or the operations
-               -- to be tested are terminating, the test for terminating
-               -- operations is used:
-               if "'TERMINATE" `isSuffixOf` map toUpper (snd name) ||
-                  (isTerminating f1 && isTerminating f2)
-                 then equivBodyTerm f1 f2 t test
-                 else
-                   -- if the test name has suffix "'PRODUCTIVE" or the
-                   -- operations to be tested are productive,
-                   -- the test for arbitrary operations is used
-                   -- (which limits the size of computed
-                   -- results but might find counter-examples later),
-                   -- otherwise the test is omitted if we are in the "safe"
-                   -- mode:
-                   if "'PRODUCTIVE" `isSuffixOf` map toUpper (snd name) ||
-                      optEquiv opts /= Safe ||
-                      (isProductive f1 && isProductive f2)
-                     then equivBodyAny f1 f2 t test
-                     else []
-          )
+  genTestFunc test = case test of
+    PropTest  name t _       -> testFuncWithRules (propBody   name t test)
+    IOTest    name   _       -> testFuncWithRules (ioTestBody name test)
+    EquivTest name f1 f2 t _ ->
+      -- if the test name has suffix "'TERMINATE" or the operations
+      -- to be tested are terminating, the test for terminating
+      -- operations is used:
+      if "'TERMINATE" `isSuffixOf` map toUpper (snd name) ||
+         (isTerminating f1 && isTerminating f2)
+        then do putStrLnIfDebug opts $
+                  "Generating equivalence test for TERMINATING " ++
+                  "operations for test: " ++ snd name
+                testFuncWithRules $ equivBodyTerm f1 f2 t test
+        else
+          -- if the test name has suffix "'PRODUCTIVE" or the
+          -- operations to be tested are productive,
+          -- the test for arbitrary operations is used
+          -- (which limits the size of computed
+          -- results but might find counter-examples later),
+          -- otherwise the test is omitted if we are in the "safe"
+          -- mode:
+          if "'PRODUCTIVE" `isSuffixOf` map toUpper (snd name) ||
+             optEquiv opts /= Safe ||
+             (isProductive f1 && isProductive f2)
+            then do putStrLnIfDebug opts $
+                      "Generating equivalence test for PRODUCTIVE " ++
+                      "operations for test: " ++ snd name
+                    testFuncWithRules $ equivBodyAny f1 f2 t test
+            else testFuncWithRules []
+   where
+     testFuncWithRules rs =
+       return $ cfunc (mainmod, genTestName test) 0 Public
+                      (emptyClassType (ioType (maybeType stringType))) rs
 
   isTerminating f = terminating f || productivity f == Terminating
   
@@ -739,7 +746,7 @@ analyseModule opts modname = do
 staticProgAnalysis :: Options -> String -> String -> CurryProg
                    -> IO ([String],[(QName,String)])
 staticProgAnalysis opts modname progtxt prog = do
-  putStrIfVerbose opts "Checking source code for static errors...\n"
+  putStrIfDetails opts "Checking source code for static errors...\n"
   useerrs <- if optSource opts then checkBlacklistUse prog else return []
   seterrs <- if optSource opts then readFlatCurry modname >>= checkSetUse
                                else return []
@@ -768,13 +775,13 @@ analyseCurryProg opts modname orgprog = do
   let srcdir = takeDirectory srcfilename
   putStrLnIfDebug opts $ "Source file: " ++ srcfilename
   prooffiles <- if optProof opts then getProofFiles srcdir else return []
-  unless (null prooffiles) $ putStrIfVerbose opts $
+  unless (null prooffiles) $ putStrIfDetails opts $
     unlines ("Proof files found:" : map ("- " ++) prooffiles)
   progtxt <- readFile srcfilename
   (missingCPP,staticoperrs) <- staticProgAnalysis opts modname progtxt prog
   let words      = map firstWord (lines progtxt)
       staticerrs = missingCPP ++ map (showOpError words) staticoperrs
-  putStrIfVerbose opts "Generating property tests...\n"
+  putStrIfDetails opts "Generating property tests...\n"
   (rawTests,ignoredTests,pubmod) <-
         transformTests opts srcdir . renameCurryModule (modname++"_PUBLIC")
                                    . makeAllPublic $ prog
@@ -1071,13 +1078,12 @@ genMainTestModule opts mainmod testmods = do
   let bottypes  = map (genBottomType mainmod) equvtypedecls
       pevalfuns = map (genPeval mainmod) equvtypedecls
       pvalfuns  = map (genPValOf mainmod) equvtypedecls
-      generators   = map (createTestDataGenerator mainmod)
+      generators   = map (genTestDataGenerator mainmod)
                          (testtypedecls ++
                           map (\td -> (ctypedecl2ftypedecl td,False)) bottypes)
-      testfuncs    = concatMap (createTests opts terminfos prodinfos mainmod)
-                               testmods
-      mainFunction = genMainFunction opts mainmod testfuncs
-                             --        (concatMap propTests testmods)
+  testfuncs <- liftM concat
+                 (mapM (genTestFuncs opts terminfos prodinfos mainmod) testmods)
+  let mainFunction = genMainFunction opts mainmod testfuncs
       imports      = nub $ [ easyCheckModule, easyCheckExecModule
                            , searchTreeModule, generatorModule
                            , "AnsiCodes","Maybe","System","Profile"] ++
@@ -1144,7 +1150,7 @@ collectAllTestTypeDecls opts fcprogs tdecls testtypenames = do
   readFlatProgsIfNecessary progs (mn:mns) =
     if mn `elem` map FCG.progName progs
       then readFlatProgsIfNecessary progs mns
-      else do putStrIfVerbose opts $
+      else do putStrIfDetails opts $
                 "Reading data types defined in module '" ++ mn ++ "'...\n"
               fprog <- readFlatCurry mn
               readFlatProgsIfNecessary (fprog:progs) mns
@@ -1179,8 +1185,8 @@ collectAllTestTypeDecls opts fcprogs tdecls testtypenames = do
 -- Creates a test data generator for a given type declaration.
 -- If the flag of the type declaration is `True`, a generator
 -- for partial values is created.
-createTestDataGenerator :: String -> (FC.TypeDecl,Bool) -> CFuncDecl
-createTestDataGenerator mainmod (tdecl,part) = type2genData tdecl
+genTestDataGenerator :: String -> (FC.TypeDecl,Bool) -> CFuncDecl
+genTestDataGenerator mainmod (tdecl,part) = type2genData tdecl
  where
   qt       = FCG.typeName tdecl
   qtString = FC.showQNameInModule "" qt
@@ -1298,7 +1304,7 @@ main = do
    else if null finaltestmodules then exitWith 0 else do
     putStrIfNormal opts $ withColor opts blue $
                           "Generating main test module '"++testmodname++"'..."
-    putStrIfVerbose opts "\n"
+    putStrIfDetails opts "\n"
     finaltests <- genMainTestModule opts testmodname finaltestmodules
     showGeneratedModule opts "main test" testmodname
     putStrIfNormal opts $ withColor opts blue $ "and compiling it...\n"

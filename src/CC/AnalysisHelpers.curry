@@ -12,7 +12,7 @@ import List                 ( intercalate, isSuffixOf )
 import AbstractCurry.Types  ( QName )
 import Analysis.Types       ( Analysis )
 import Analysis.ProgInfo    ( ProgInfo, emptyProgInfo, combineProgInfo
-                            , lookupProgInfo)
+                            , lookupProgInfo )
 import Analysis.Termination ( Productivity(..), productivityAnalysis
                             , terminationAnalysis )
 import CASS.Server          ( analyzeGeneric )
