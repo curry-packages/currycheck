@@ -85,7 +85,7 @@ options =
            "do not perform source code checks"
   , Option "" ["noprop"]
            (NoArg (\opts -> opts { optProp = False }))
-           "do not perform any property tests"
+           "do not perform property tests"
   , Option "" ["nospec"]
            (NoArg (\opts -> opts { optSpec = False }))
            "do not perform specification/postcondition tests"

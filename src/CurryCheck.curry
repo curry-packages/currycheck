@@ -55,12 +55,12 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 11/02/2018)"
+                packageVersion ++ " of 12/02/2018)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
 usageText :: String
-usageText = usageInfo ("Usage: curry check [options] <module names>\n") options
+usageText = usageInfo ("Usage: curry-check [options] <module names>\n") options
 
 --- Maximal arity of check functions and tuples currently supported:
 maxArity :: Int
