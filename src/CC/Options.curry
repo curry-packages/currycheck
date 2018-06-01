@@ -20,6 +20,7 @@ data Options = Options
   , optMaxFail  :: Int
   , optDefType  :: String
   , optSource   :: Bool
+  , optIOTest   :: Bool
   , optProp     :: Bool
   , optSpec     :: Bool
   , optDet      :: Bool
@@ -40,6 +41,7 @@ defaultOptions  = Options
   , optMaxFail  = 0
   , optDefType  = "Ordering"
   , optSource   = True
+  , optIOTest   = True
   , optProp     = True
   , optSpec     = True
   , optDet      = True
@@ -83,6 +85,9 @@ options =
   , Option "" ["nosource"]
            (NoArg (\opts -> opts { optSource = False }))
            "do not perform source code checks"
+  , Option "" ["noiotest"]
+           (NoArg (\opts -> opts { optIOTest = False }))
+           "do not test I/O properties"
   , Option "" ["noprop"]
            (NoArg (\opts -> opts { optProp = False }))
            "do not perform property tests"

@@ -14,7 +14,7 @@
 ---   (together with possible preconditions).
 ---
 --- @author Michael Hanus, Jan-Patrick Baye
---- @version February 2018
+--- @version June 2018
 -------------------------------------------------------------------------
 
 import AnsiCodes
@@ -55,7 +55,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 12/02/2018)"
+                packageVersion ++ " of 01/06/2018)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -432,8 +432,7 @@ classifyTests opts prog = map makeProperty
        (e1,e2) -> error $ "Illegal equivalence property:\n" ++
                           showCExpr e1 ++ " <=> " ++ showCExpr e2
 
-  defaultingType = poly2defaultType (optDefType opts) . typeOfQualType
-                                                      . defaultQualType
+  defaultingType = poly2defaultType opts . typeOfQualType . defaultQualType
   
   funcTypeOf f = maybe (error $ "Cannot find type of " ++ show f ++ "!")
                        funcType
@@ -464,7 +463,7 @@ transformTests opts srcdir
       (realtests,ignoredtests) = partition fst $
         if not (optProp opts)
         then []
-        else concatMap (poly2default (optDefType opts)) $
+        else concatMap (poly2default opts) $
                -- ignore already proved properties:
                filter (\fd -> funcName fd `notElem` map funcName theofuncs)
                       usertests ++
@@ -514,7 +513,7 @@ transformDetTests opts prooffiles
   (realtests,ignoredtests) = partition fst $
     if not (optProp opts)
     then []
-    else concatMap (poly2default (optDefType opts))
+    else concatMap (poly2default opts)
                    (if optDet opts then detOpTests else [])
 
 -- Get all operations with a defined precondition from a list of functions.
@@ -631,27 +630,30 @@ genDetProp prefuns (CFunc (mn,fn) ar _ (CQualType clscon texp) _) =
 
 -- Generates auxiliary (base-type instantiated) test functions for
 -- polymorphically typed test function.
--- The flag indicates whether the test function should be actually passed
--- to the test tool.
-poly2default :: String -> CFuncDecl -> [(Bool,CFuncDecl)]
-poly2default dt (CmtFunc _ name arity vis ftype rules) =
-  poly2default dt (CFunc name arity vis ftype rules)
-poly2default dt fdecl@(CFunc (mn,fname) arity vis qftype rs)
+-- The returned flag indicates whether the test function should actually
+-- be passed to the test tool.
+-- Thus, IO tests are flagged by `False` if the corresponding option is set.
+poly2default :: Options -> CFuncDecl -> [(Bool,CFuncDecl)]
+poly2default opts (CmtFunc _ name arity vis ftype rules) =
+  poly2default opts (CFunc name arity vis ftype rules)
+poly2default opts fdecl@(CFunc (mn,fname) arity vis qftype rs)
   | isPolyType ftype
   = [(False,fdecl)
     ,(True, CFunc (mn,fname++defTypeSuffix) arity vis
-                  (emptyClassType (poly2defaultType dt ftype))
+                  (emptyClassType (poly2defaultType opts ftype))
                   [simpleRule [] (applyF (mn,fname) [])])
     ]
+  | not (optIOTest opts) && isPropIOType ftype
+  = [(False,fdecl)]
   | otherwise
   = [(True, CFunc (mn,fname) arity vis (CQualType clscon ftype) rs)]
  where
   CQualType clscon ftype = defaultQualType qftype
 
-poly2defaultType :: String -> CTypeExpr -> CTypeExpr
-poly2defaultType dt texp = p2dt texp 
+poly2defaultType :: Options -> CTypeExpr -> CTypeExpr
+poly2defaultType opts texp = p2dt texp 
  where
-  p2dt (CTVar _)         = baseType (pre dt)
+  p2dt (CTVar _)         = baseType (pre (optDefType opts))
   p2dt (CFuncType t1 t2) = CFuncType (p2dt t1) (p2dt t2)
   p2dt (CTApply t1 t2)   = CTApply (p2dt t1) (p2dt t2)
   p2dt (CTCons ct)       = CTCons ct
@@ -1263,8 +1265,8 @@ cleanup opts mainmod modules =
     system $ "rm -f " ++ srcfilename
 
 -- Show some statistics about number of tests:
-showTestStatistics :: [Test] -> String
-showTestStatistics tests =
+showTestStatistics :: Options -> [Test] -> String
+showTestStatistics opts tests =
   let numtests  = sumOf (const True)
       unittests = sumOf isUnitTest  
       proptests = sumOf isPropTest  
@@ -1273,7 +1275,7 @@ showTestStatistics tests =
    in "TOTAL NUMBER OF TESTS: " ++ show numtests ++
       " (UNIT: " ++ show unittests ++ ", PROPERTIES: " ++
       show proptests ++ ", EQUIVALENCE: " ++ show equvtests ++
-      ", IO: " ++ show iotests ++ ")"
+      (if optIOTest opts then ", IO: " ++ show iotests else "") ++ ")"
  where
   sumOf p = length . filter p $ tests
 
@@ -1323,7 +1325,7 @@ main = do
     ret <- system runcmd
     cleanup opts testmodname finaltestmodules
     unless (isQuiet opts || ret /= 0) $
-      putStrLn $ withColor opts green $ showTestStatistics finaltests
+      putStrLn $ withColor opts green $ showTestStatistics opts finaltests
     exitWith ret
  where
   showStaticErrors opts errs = putStrLn $ withColor opts red $
