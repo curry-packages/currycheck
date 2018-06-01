@@ -4,10 +4,13 @@
 
 --- Runs a sequence of property tests. Outputs the messages of the failed tests
 --- messages and returns exit status 0 if all tests are successful,
---- otherwise status 1.
-runPropertyTests :: Bool -> [IO (Maybe String)] -> IO Int
-runPropertyTests withcolor props = do
-  failedmsgs <- sequenceIO props >>= return . Maybe.catMaybes
+--- otherwise status 1. If the second argument is `True`, the time
+--- needed for checking each property is shown.
+runPropertyTests :: Bool -> Bool -> [IO (Maybe String)] -> IO Int
+runPropertyTests withcolor withtime props = do
+  failedmsgs <- sequenceIO (if withtime then map showRunTimeFor props
+                                        else props)
+                >>= return . Maybe.catMaybes
   if null failedmsgs
    then return 0
    else do putStrLn $ (if withcolor then AnsiCodes.red else id) $
@@ -17,5 +20,14 @@ runPropertyTests withcolor props = do
            return 1
  where
    line = take 78 (repeat '=')
+
+--- Prints the run time needed to execute a given IO action.
+showRunTimeFor :: IO a -> IO a
+showRunTimeFor action = do
+  t0 <- Profile.getProcessInfos >>= return . maybe 0 id . lookup Profile.RunTime
+  result <- action
+  t1 <- Profile.getProcessInfos >>= return . maybe 0 id . lookup Profile.RunTime
+  putStrLn $ "Run time: " ++ show (t1-t0) ++ " msec."
+  return result
 
 -------------------------------------------------------------------------

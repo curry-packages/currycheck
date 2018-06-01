@@ -14,8 +14,17 @@
 ---   (together with possible preconditions).
 ---
 --- @author Michael Hanus, Jan-Patrick Baye
---- @version December 2017
+--- @version June 2018
 -------------------------------------------------------------------------
+
+import AnsiCodes
+import Char                    ( toUpper )
+import Distribution
+import FilePath                ( (</>), pathSeparator, takeDirectory )
+import GetOpt
+import List
+import Maybe                   ( fromJust, isJust )
+import System                  ( system, exitWith, getArgs, getPID, getEnviron )
 
 import AbstractCurry.Types
 import AbstractCurry.Files
@@ -23,163 +32,35 @@ import AbstractCurry.Select
 import AbstractCurry.Build
 import AbstractCurry.Pretty    (showCProg)
 import AbstractCurry.Transform (renameCurryModule,updCProg,updQNamesInCProg)
-import AnsiCodes
-import Char                    (toUpper)
-import Distribution
-import FilePath                ((</>), pathSeparator, takeDirectory)
 import qualified FlatCurry.Types as FC
 import FlatCurry.Files
 import qualified FlatCurry.Goodies as FCG
-import GetOpt
-import IO
-import List
-import Maybe                   (fromJust, isJust)
-import ReadNumeric             (readNat)
-import System                  (system, exitWith, getArgs, getPID, getEnviron)
 
-import CheckDetUsage           (checkDetUse, containsDetOperations)
+import CC.Config               ( packagePath, packageVersion )
+import CC.Options
+import CheckDetUsage           ( checkDetUse, containsDetOperations)
 import ContractUsage
-import CurryCheckConfig        (packagePath, packageVersion)
-import DefaultRuleUsage        (checkDefaultRules, containsDefaultRules)
+import DefaultRuleUsage        ( checkDefaultRules, containsDefaultRules )
 import PropertyUsage
-import SimplifyPostConds       (simplifyPostConditionsWithTheorems)
+import SimplifyPostConds       ( simplifyPostConditionsWithTheorems )
 import TheoremUsage
-import UsageCheck              (checkBlacklistUse, checkSetUse)
-
---- Maximal arity of check functions and tuples currently supported:
-maxArity :: Int
-maxArity = 5
+import UsageCheck              ( checkBlacklistUse, checkSetUse )
 
 -- Banner of this tool:
 ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 14/12/2017)"
+                packageVersion ++ " of 01/06/2018)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
 usageText :: String
-usageText = usageInfo ("Usage: curry check [options] <module names>\n") options
-  
--------------------------------------------------------------------------
--- Representation of command line options.
-data Options = Options
-  { optHelp     :: Bool
-  , optVerb     :: Int
-  , optKeep     :: Bool
-  , optMaxTest  :: Int
-  , optMaxFail  :: Int
-  , optDefType  :: String
-  , optSource   :: Bool
-  , optProp     :: Bool
-  , optSpec     :: Bool
-  , optDet      :: Bool
-  , optProof    :: Bool
-  , optColor    :: Bool
-  , optMainProg :: String
-  }
+usageText = usageInfo ("Usage: curry-check [options] <module names>\n") options
 
--- Default command line options.
-defaultOptions :: Options
-defaultOptions  = Options
-  { optHelp     = False
-  , optVerb     = 1
-  , optKeep     = False
-  , optMaxTest  = 0
-  , optMaxFail  = 0
-  , optDefType  = "Ordering"
-  , optSource   = True
-  , optProp     = True
-  , optSpec     = True
-  , optDet      = True
-  , optProof    = True
-  , optColor    = True
-  , optMainProg = ""
-  }
-
--- Definition of actual command line options.
-options :: [OptDescr (Options -> Options)]
-options =
-  [ Option "h?" ["help"] (NoArg (\opts -> opts { optHelp = True }))
-           "print help and exit"
-  , Option "q" ["quiet"] (NoArg (\opts -> opts { optVerb = 0 }))
-           "run quietly (no output, only exit code)"
-  , Option "v" ["verbosity"]
-            (OptArg (maybe (checkVerb 3) (safeReadNat checkVerb)) "<n>")
-            "verbosity level:\n0: quiet (same as `-q')\n1: show test names (default)\n2: show more information about test generation\n3: show test data (same as `-v')\n4: show also some debug information"
-  , Option "k" ["keep"] (NoArg (\opts -> opts { optKeep = True }))
-           "keep temporarily generated program files"
-  , Option "m" ["maxtests"]
-           (ReqArg (safeReadNat (\n opts -> opts { optMaxTest = n })) "<n>")
-           "maximal number of tests (default: 100)"
-  , Option "f" ["maxfails"]
-           (ReqArg (safeReadNat (\n opts -> opts { optMaxFail = n })) "<n>")
-           "maximal number of condition failures\n(default: 10000)"
-  , Option "d" ["deftype"]
-           (ReqArg checkDefType "<t>")
-           "type for defaulting polymorphic tests:\nBool | Int | Char | Ordering (default)"
-  , Option "" ["nosource"]
-           (NoArg (\opts -> opts { optSource = False }))
-           "do not perform source code checks"
-  , Option "" ["noprop"]
-           (NoArg (\opts -> opts { optProp = False }))
-           "do not perform any property tests"
-  , Option "" ["nospec"]
-           (NoArg (\opts -> opts { optSpec = False }))
-           "do not perform specification/postcondition tests"
-  , Option "" ["nodet"]
-           (NoArg (\opts -> opts { optDet = False }))
-           "do not perform determinism tests"
-  , Option "" ["noproof"]
-           (NoArg (\opts -> opts { optProof = False }))
-           "do not consider proofs to simplify properties"
-  , Option "" ["nocolor"]
-           (NoArg (\opts -> opts { optColor = False }))
-           "do not use colors when showing tests"
-  , Option "" ["mainprog"]
-           (ReqArg (\s opts -> opts { optMainProg = s }) "<prog>")
-           "name of generated main program\n(default: TEST<pid>.curry)"
-  ]
- where
-  safeReadNat opttrans s opts =
-   let numError = error "Illegal number argument (try `-h' for help)" in
-    maybe numError
-          (\ (n,rs) -> if null rs then opttrans n opts else numError)
-          (readNat s)
-
-  checkVerb n opts = if n>=0 && n<5
-                     then opts { optVerb = n }
-                     else error "Illegal verbosity level (try `-h' for help)"
-
-  checkDefType s opts = if s `elem` ["Bool","Int","Char","Ordering"]
-                        then opts { optDefType = s }
-                        else error "Illegal default type (try `-h' for help)"
-
---- Further option processing, e.g., setting coloring mode.
-processOpts :: Options -> IO Options
-processOpts opts = do
-  isterm <- hIsTerminalDevice stdout
-  return $ if isterm then opts else opts { optColor = False}
-
-isQuiet :: Options -> Bool
-isQuiet opts = optVerb opts == 0
-
---- Print second argument if verbosity level is not quiet:
-putStrIfNormal :: Options -> String -> IO ()
-putStrIfNormal opts s = unless (isQuiet opts) (putStr s >> hFlush stdout)
-
---- Print second argument if verbosity level > 1:
-putStrIfVerbose :: Options -> String -> IO ()
-putStrIfVerbose opts s = when (optVerb opts > 1) (putStr s >> hFlush stdout)
-
---- Print second argument if verbosity level > 3:
-putStrLnIfDebug :: Options -> String -> IO ()
-putStrLnIfDebug opts s = when (optVerb opts > 3) (putStrLn s >> hFlush stdout)
-
---- use some coloring (from library AnsiCodes) if color option is on:
-withColor :: Options -> (String -> String) -> String -> String
-withColor opts coloring = if optColor opts then coloring else id
+--- Maximal arity of check functions and tuples currently supported:
+maxArity :: Int
+maxArity = 5
 
 -------------------------------------------------------------------------
 -- The names of suffixes added to specific tests.
@@ -226,23 +107,34 @@ isEquivTest :: Test -> Bool
 isEquivTest t = case t of EquivTest _ _ _ _ _ -> True
                           _                   -> False
 
+-- Returns the names of the operations of an equivalence test.
+equivTestOps :: Test -> [QName]
+equivTestOps t = case t of EquivTest _ f1 f2 _ _ -> [f1,f2]
+                           _                     -> []
+
 -- The name of a test:
-getTestName :: Test -> QName
-getTestName (PropTest  n _     _) = n
-getTestName (IOTest    n       _) = n
-getTestName (EquivTest n _ _ _ _) = n
+testName :: Test -> QName
+testName (PropTest  n _     _) = n
+testName (IOTest    n       _) = n
+testName (EquivTest n _ _ _ _) = n
 
 -- The line number of a test:
-getTestLine :: Test -> Int
-getTestLine (PropTest  _ _     n) = n
-getTestLine (IOTest    _       n) = n
-getTestLine (EquivTest _ _ _ _ n) = n
+testLine :: Test -> Int
+testLine (PropTest  _ _     n) = n
+testLine (IOTest    _       n) = n
+testLine (EquivTest _ _ _ _ n) = n
 
 -- Generates a useful error message for tests (with module and line number)
 genTestMsg :: String -> Test -> String
 genTestMsg file test =
-  snd (getTestName test) ++
-  " (module " ++ file ++ ", line " ++ show (getTestLine test) ++ ")"
+  snd (testName test) ++
+  " (module " ++ file ++ ", line " ++ show (testLine test) ++ ")"
+
+-- Generates the name of a test in the main test module from the test name.
+genTestName :: Test -> String
+genTestName test =
+  let (modName, fName) = testName test
+  in fName ++ "_" ++ modNameToId modName
 
 -------------------------------------------------------------------------
 -- Representation of the information about a module to be tested:
@@ -293,11 +185,11 @@ equivPropTypes testmod = concatMap equivTypesOf (propTests testmod)
 -------------------------------------------------------------------------
 -- Transform all tests of a module into operations that perform
 -- appropriate calls to EasyCheck:
-createTests :: Options -> String -> TestModule -> [CFuncDecl]
-createTests opts mainmod tm = map createTest (propTests tm)
+genTestFuncs :: Options -> String -> TestModule -> [CFuncDecl]
+genTestFuncs opts mainmod tm = map createTest (propTests tm)
  where
   createTest test =
-    cfunc (mainmod, (genTestName $ getTestName test)) 0 Public
+    cfunc (mainmod, (genTestName $ testName test)) 0 Public
           (ioType (maybeType stringType))
           (case test of
              PropTest  name t _       -> propBody   name t test
@@ -327,27 +219,27 @@ createTests opts mainmod tm = map createTest (propTests tm)
 
   -- Operation equivalence test for terminating operations:
   equivBodyTerm f1 f2 texp test =
-    let xvar = (1,"x")
+    let xvars = map (\i -> (i,"x"++show i)) [1 .. arityOfType texp]
         pvalOfFunc = ctype2pvalOf mainmod "pvalOf" (resultType texp)
     in propOrEquivBody (map (\t -> (t,True)) (argTypes texp)) test
-         (CLambda [CPVar xvar]
+         (CLambda (map CPVar xvars)
             (applyF (easyCheckModule,"<~>")
-                    [applyE pvalOfFunc [applyF f1 [CVar xvar]],
-                     applyE pvalOfFunc [applyF f2 [CVar xvar]]]))
+                    [applyE pvalOfFunc [applyF f1 (map CVar xvars)],
+                     applyE pvalOfFunc [applyF f2 (map CVar xvars)]]))
 
   -- Operation equivalence test for arbitrary operations:
   equivBodyAny f1 f2 texp test =
-    let xvar = (1,"x")
-        pvar = (2,"p")
+    let xvars = map (\i -> (i,"x"++show i)) [1 .. arityOfType texp]
+        pvar  = (2,"p")
         pvalOfFunc = ctype2pvalOf mainmod "peval" (resultType texp)
     in propOrEquivBody
          (map (\t -> (t,True)) (argTypes texp) ++
           [(ctype2BotType mainmod  (resultType texp), False)])
          test
-         (CLambda [CPVar xvar, CPVar pvar]
+         (CLambda (map CPVar xvars ++ [CPVar pvar])
             (applyF (easyCheckModule,"<~>")
-                    [applyE pvalOfFunc [applyF f1 [CVar xvar], CVar pvar],
-                     applyE pvalOfFunc [applyF f2 [CVar xvar], CVar pvar]]))
+               [applyE pvalOfFunc [applyF f1 (map CVar xvars), CVar pvar],
+                applyE pvalOfFunc [applyF f2 (map CVar xvars), CVar pvar]]))
 
   propBody qname texp test =
     propOrEquivBody (map (\t -> (t,False)) (argTypes texp))
@@ -381,17 +273,17 @@ createTests opts mainmod tm = map createTest (propTests tm)
        in if n==0 then stdConfigOp
                   else applyF (easyCheckExecModule,"setMaxTest")
                               [cInt n, stdConfigOp]
-                            
+
     configOpWithMaxFail =
       let n = optMaxFail opts
        in if n==0 then configOpWithMaxTest
                   else applyF (easyCheckExecModule,"setMaxFail")
                               [cInt n, configOpWithMaxTest]
-                            
+
     msgvar = (0,"msg")
-    
+
   stdConfigOp = constF (easyCheckConfig opts)
-    
+
   ioTestBody (_, name) test =
     [simpleRule [] $ applyF (easyCheckExecModule,"checkPropIOWithMsg")
                             [stdConfigOp, msgOf test, CSymbol (testmname,name)]]
@@ -484,8 +376,7 @@ classifyTests opts prog = map makeProperty
       then IOTest tname 0
       else maybe (PropTest tname (funcType test) 0)
                  (\ (f1,f2) -> EquivTest tname f1 f2
-                                         (poly2defaultType (optDefType opts)
-                                                           (funcTypeOf f1))
+                                         (poly2defaultType opts (funcTypeOf f1))
                                          0)
                  (isEquivProperty test)
     where tname = funcName test
@@ -518,7 +409,7 @@ transformTests opts srcdir
       (realtests,ignoredtests) = partition fst $
         if not (optProp opts)
         then []
-        else concatMap (poly2default (optDefType opts)) $
+        else concatMap (poly2default opts) $
                -- ignore already proved properties:
                filter (\fd -> funcName fd `notElem` map funcName theofuncs)
                       usertests ++
@@ -553,7 +444,7 @@ transformDetTests opts prooffiles
              opDecls)
  where
   preCondOps = preCondOperations functions
-  
+
   -- generate determinism tests:
   detOpTests = genDetOpTests prooffiles preCondOps functions
 
@@ -565,7 +456,7 @@ transformDetTests opts prooffiles
   (realtests,ignoredtests) = partition fst $
     if not (optProp opts)
     then []
-    else concatMap (poly2default (optDefType opts))
+    else concatMap (poly2default opts)
                    (if optDet opts then detOpTests else [])
 
 -- Get all operations with a defined precondition from a list of functions.
@@ -680,25 +571,28 @@ genDetProp prefuns (CFunc (mn,fn) ar _ texp _) =
 
 -- Generates auxiliary (base-type instantiated) test functions for
 -- polymorphically typed test function.
--- The flag indicates whether the test function should be actually passed
--- to the test tool.
-poly2default :: String -> CFuncDecl -> [(Bool,CFuncDecl)]
-poly2default dt (CmtFunc _ name arity vis ftype rules) =
-  poly2default dt (CFunc name arity vis ftype rules)
-poly2default dt fdecl@(CFunc (mn,fname) arity vis ftype _)
+-- The returned flag indicates whether the test function should actually
+-- be passed to the test tool.
+-- Thus, IO tests are flagged by `False` if the corresponding option is set.
+poly2default :: Options -> CFuncDecl -> [(Bool,CFuncDecl)]
+poly2default opts (CmtFunc _ name arity vis ftype rules) =
+  poly2default opts (CFunc name arity vis ftype rules)
+poly2default opts fdecl@(CFunc (mn,fname) arity vis ftype rs)
   | isPolyType ftype
   = [(False,fdecl)
     ,(True, CFunc (mn,fname++defTypeSuffix) arity vis
-                  (poly2defaultType dt ftype)
+                  (poly2defaultType opts ftype)
                   [simpleRule [] (applyF (mn,fname) [])])
     ]
+  | not (optIOTest opts) && isPropIOType ftype
+  = [(False,fdecl)]
   | otherwise
   = [(True,fdecl)]
 
-poly2defaultType :: String -> CTypeExpr -> CTypeExpr
-poly2defaultType dt texp = p2dt texp 
+poly2defaultType :: Options -> CTypeExpr -> CTypeExpr
+poly2defaultType opts texp = p2dt texp 
  where
-  p2dt (CTVar _)         = baseType (pre dt)
+  p2dt (CTVar _)         = baseType (pre (optDefType opts))
   p2dt (CFuncType t1 t2) = CFuncType (p2dt t1) (p2dt t2)
   p2dt (CTCons ct ts)    = CTCons ct (map p2dt ts)
 
@@ -738,7 +632,7 @@ analyseModule opts modname = do
 staticProgAnalysis :: Options -> String -> String -> CurryProg
                    -> IO ([String],[(QName,String)])
 staticProgAnalysis opts modname progtxt prog = do
-  putStrIfVerbose opts "Checking source code for static errors...\n"
+  putStrIfDetails opts "Checking source code for static errors...\n"
   useerrs <- if optSource opts then checkBlacklistUse prog else return []
   seterrs <- if optSource opts then readFlatCurry modname >>= checkSetUse
                                else return []
@@ -767,13 +661,13 @@ analyseCurryProg opts modname orgprog = do
   let srcdir = takeDirectory srcfilename
   putStrLnIfDebug opts $ "Source file: " ++ srcfilename
   prooffiles <- if optProof opts then getProofFiles srcdir else return []
-  unless (null prooffiles) $ putStrIfVerbose opts $
+  unless (null prooffiles) $ putStrIfDetails opts $
     unlines ("Proof files found:" : map ("- " ++) prooffiles)
   progtxt <- readFile srcfilename
   (missingCPP,staticoperrs) <- staticProgAnalysis opts modname progtxt prog
   let words      = map firstWord (lines progtxt)
       staticerrs = missingCPP ++ map (showOpError words) staticoperrs
-  putStrIfVerbose opts "Generating property tests...\n"
+  putStrIfDetails opts "Generating property tests...\n"
   (rawTests,ignoredTests,pubmod) <-
         transformTests opts srcdir . renameCurryModule (modname++"_PUBLIC")
                                    . makeAllPublic $ prog
@@ -1044,16 +938,16 @@ genMainTestModule opts mainmod modules = do
   let bottypes  = map (genBottomType mainmod) equvtypedecls
       pevalfuns = map (genPeval mainmod) equvtypedecls
       pvalfuns  = map (genPValOf mainmod) equvtypedecls
-      generators   = map (createTestDataGenerator mainmod)
+      generators   = map (genTestDataGenerator mainmod)
                          (testtypedecls ++
                           map (\td -> (ctypedecl2ftypedecl td,False)) bottypes)
-      funcs        = concatMap (createTests opts mainmod) modules ++
+      funcs        = concatMap (genTestFuncs opts mainmod) modules ++
                                generators
       mainFunction = genMainFunction opts mainmod
                                      (concatMap propTests modules)
       imports      = nub $ [ easyCheckModule, easyCheckExecModule
                            , searchTreeModule, generatorModule
-                           , "AnsiCodes","Maybe","System"] ++
+                           , "AnsiCodes","Maybe","System","Profile"] ++
                            map (fst . fst) testtypes ++
                            map testModuleName modules
   appendix <- readFile (packagePath </> "src" </> "TestAppendix.curry")
@@ -1076,6 +970,7 @@ genMainFunction opts testModule tests =
      [ CSPat (cpvar "x1") $ -- run all tests:
           applyF (testModule, "runPropertyTests")
                  [constF (pre (if optColor opts then "True" else "False")),
+                  constF (pre (if optTime  opts then "True" else "False")),
                   easyCheckExprs]
      , CSExpr $ applyF (pre "when")
                   [applyF (pre "/=") [cvar "x1", cInt 0],
@@ -1135,8 +1030,8 @@ collectAllTestTypeDecls tdecls testtypenames = do
 -- Creates a test data generator for a given type declaration.
 -- If the flag of the type declaration is `True`, a generator
 -- for partial values is created.
-createTestDataGenerator :: String -> (FC.TypeDecl,Bool) -> CFuncDecl
-createTestDataGenerator mainmod (tdecl,part) = type2genData tdecl
+genTestDataGenerator :: String -> (FC.TypeDecl,Bool) -> CFuncDecl
+genTestDataGenerator mainmod (tdecl,part) = type2genData tdecl
  where
   qt       = FCG.typeName tdecl
   qtString = FC.showQNameInModule "" qt
@@ -1211,8 +1106,8 @@ cleanup opts mainmod modules =
             done )
 
 -- Show some statistics about number of tests:
-showTestStatistics :: [TestModule] -> String
-showTestStatistics testmodules =
+showTestStatistics :: Options -> [TestModule] -> String
+showTestStatistics opts testmodules =
   let numtests  = sumOf (const True) testmodules
       unittests = sumOf isUnitTest   testmodules
       proptests = sumOf isPropTest   testmodules
@@ -1221,7 +1116,7 @@ showTestStatistics testmodules =
    in "TOTAL NUMBER OF TESTS: " ++ show numtests ++
       " (UNIT: " ++ show unittests ++ ", PROPERTIES: " ++
       show proptests ++ ", EQUIVALENCE: " ++ show equvtests ++
-      ", IO: " ++ show iotests ++ ")"
+      (if optIOTest opts then ", IO: " ++ show iotests else "") ++ ")"
  where
   sumOf p = foldr (+) 0 . map (length . filter p . propTests)
 
@@ -1234,7 +1129,7 @@ main = do
   opts <- processOpts (foldl (flip id) defaultOptions funopts)
   unless (null opterrors)
          (putStr (unlines opterrors) >> putStrLn usageText >> exitWith 1)
-  putStrIfNormal opts ccBanner 
+  putStrIfNormal opts ccBanner
   when (null args || optHelp opts) (putStrLn usageText >> exitWith 1)
   let mods = map stripCurrySuffix args
   mapIO_ checkModuleName mods
@@ -1252,7 +1147,9 @@ main = do
    else if null finaltestmodules then exitWith 0 else do
     putStrIfNormal opts $ withColor opts blue $
                           "Generating main test module '"++testmodname++"'..."
+    putStrIfDetails opts "\n"
     genMainTestModule opts testmodname finaltestmodules
+    showGeneratedModule opts "main test" testmodname
     putStrIfNormal opts $ withColor opts blue $ "and compiling it...\n"
     ecurrypath <- getEnviron "CURRYPATH"
     let currypath = case ecurrypath of ':':_ -> '.':ecurrypath
@@ -1269,7 +1166,7 @@ main = do
     ret <- system runcmd
     cleanup opts testmodname finaltestmodules
     unless (isQuiet opts || ret /= 0) $
-      putStrLn $ withColor opts green $ showTestStatistics finaltestmodules
+      putStrLn $ withColor opts green $ showTestStatistics opts finaltestmodules
     exitWith ret
  where
   showStaticErrors opts errs = putStrLn $ withColor opts red $
@@ -1280,6 +1177,16 @@ main = do
       putStrLn $ "Module names with path prefixes not allowed: " ++ mn
       exitWith 1
 
+  line = take 78 (repeat '=')
+
+showGeneratedModule :: Options -> String -> String -> IO ()
+showGeneratedModule opts mkind modname = when (optVerb opts > 3) $ do
+  putStrLn $ '\n' : line
+  putStrLn $ "Generated " ++ mkind ++ " module `" ++ modname ++ ".curry':"
+  putStrLn line
+  readFile (modname ++ ".curry") >>= putStr
+  putStrLn line
+ where
   line = take 78 (repeat '=')
 
 -------------------------------------------------------------------------
@@ -1319,7 +1226,7 @@ searchTreeModule = "SearchTree"
 --- Name of SearchTree type constructor.
 searchTreeTC :: QName
 searchTreeTC = (searchTreeModule,"SearchTree")
-    
+
 --- Name of the SearchTreeGenerator module.
 generatorModule :: String
 generatorModule = "SearchTreeGenerators"
