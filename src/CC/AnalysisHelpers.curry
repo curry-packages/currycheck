@@ -3,23 +3,25 @@
 ------------------------------------------------------------------------------
 
 module CC.AnalysisHelpers
-  ( getTerminationInfos, getProductivityInfos )
+  ( getTerminationInfos, getProductivityInfos, getUnsafeModuleInfos
+  , dropPublicSuffix )
  where
 
 import AnsiCodes            ( blue )
 import List                 ( intercalate, isSuffixOf )
 
-import AbstractCurry.Types  ( QName )
-import Analysis.Types       ( Analysis )
-import Analysis.ProgInfo    ( ProgInfo, emptyProgInfo, combineProgInfo
-                            , lookupProgInfo )
-import Analysis.Termination ( Productivity(..), productivityAnalysis
-                            , terminationAnalysis )
-import CASS.Server          ( analyzeGeneric )
+import AbstractCurry.Types   ( QName )
+import Analysis.Types        ( Analysis )
+import Analysis.ProgInfo     ( ProgInfo, emptyProgInfo, combineProgInfo
+                             , lookupProgInfo )
+import Analysis.Termination  ( Productivity(..), productivityAnalysis
+                             , terminationAnalysis )
+import Analysis.UnsafeModule ( unsafeModuleAnalysis )
+import CASS.Server           ( analyzeGeneric )
 
 import CC.Options
 
--- Analyze a list of module for their termination behavior.
+-- Analyzes a list of modules for their termination behavior.
 -- If a module is a `_PUBLIC` module, we analyze the original module
 -- and map these results to the `_PUBLIC` names, in order to support
 -- caching of analysis results for the original modules.
@@ -29,7 +31,7 @@ getTerminationInfos opts mods = do
                           (map dropPublicSuffix mods)
   return (\qn -> maybe False id (lookupProgInfo (dropPublicQName qn) ainfo))
 
--- Analyze a list of module for their productivity behavior.
+-- Analyzes a list of modules for their productivity behavior.
 -- If a module is a `_PUBLIC` module, we analyze the original module
 -- and map these results to the `_PUBLIC` names, in order to support
 -- caching of analysis results for the original modules.
@@ -38,6 +40,16 @@ getProductivityInfos opts mods = do
   ainfo <- analyzeModules opts "productivity" productivityAnalysis
                           (map dropPublicSuffix mods)
   return (\qn -> maybe NoInfo id (lookupProgInfo (dropPublicQName qn) ainfo))
+
+-- Analyzes a list of modules for their productivity behavior.
+-- If a module is a `_PUBLIC` module, we analyze the original module
+-- and map these results to the `_PUBLIC` names, in order to support
+-- caching of analysis results for the original modules.
+getUnsafeModuleInfos :: Options -> [String] -> IO (QName -> [String])
+getUnsafeModuleInfos opts mods = do
+  ainfo <- analyzeModules opts "unsafe module" unsafeModuleAnalysis
+                          (map dropPublicSuffix mods)
+  return (\qn -> maybe [] id (lookupProgInfo (dropPublicQName qn) ainfo))
 
 
 dropPublicSuffix :: String -> String

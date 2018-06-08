@@ -39,7 +39,8 @@ import FlatCurry.Files
 import qualified FlatCurry.Goodies as FCG
 import Text.Pretty             ( pPrint )
 
-import CC.AnalysisHelpers      ( getTerminationInfos, getProductivityInfos )
+import CC.AnalysisHelpers      ( getTerminationInfos, getProductivityInfos
+                               , getUnsafeModuleInfos, dropPublicSuffix )
 import CC.Config               ( packagePath, packageVersion )
 import CC.Options
 import CheckDetUsage           ( checkDetUse, containsDetOperations)
@@ -55,7 +56,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 01/06/2018)"
+                packageVersion ++ " of 08/06/2018)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -632,7 +633,8 @@ genDetProp prefuns (CFunc (mn,fn) ar _ (CQualType clscon texp) _) =
 -- polymorphically typed test function.
 -- The returned flag indicates whether the test function should actually
 -- be passed to the test tool.
--- Thus, IO tests are flagged by `False` if the corresponding option is set.
+-- For instance, polymorphic proprerties are not tested, but only
+-- their type-instantiated variants.
 poly2default :: Options -> CFuncDecl -> [(Bool,CFuncDecl)]
 poly2default opts (CmtFunc _ name arity vis ftype rules) =
   poly2default opts (CFunc name arity vis ftype rules)
@@ -643,8 +645,6 @@ poly2default opts fdecl@(CFunc (mn,fname) arity vis qftype rs)
                   (emptyClassType (poly2defaultType opts ftype))
                   [simpleRule [] (applyF (mn,fname) [])])
     ]
-  | not (optIOTest opts) && isPropIOType ftype
-  = [(False,fdecl)]
   | otherwise
   = [(True, CFunc (mn,fname) arity vis (CQualType clscon ftype) rs)]
  where
@@ -1063,15 +1063,25 @@ ctypedecl2ftypedecl (CType qtc _ tvars consdecls _) =
 -- Furthermore, if PAKCS is used, test data generators
 -- for user-defined types are automatically generated.
 genMainTestModule :: Options -> String -> [TestModule] -> IO [Test]
-genMainTestModule opts mainmod testmods = do
-  let equivtestops = nub (concatMap equivTestOps (concatMap propTests testmods))
+genMainTestModule opts mainmod orgtestmods = do
+  let alltests     = concatMap propTests orgtestmods
+      equivtestops = nub (concatMap equivTestOps alltests)
   terminfos <- if optEquiv opts == Autoselect
                  then getTerminationInfos opts (nub (map fst equivtestops))
                  else return (const False)
   prodinfos <- if optEquiv opts == Safe
                  then getProductivityInfos opts (nub (map fst equivtestops))
                  else return (const NoInfo)
-  let testtypes = nub (concatMap userTestDataOfModule testmods)
+  unsafeinfos <- if optIOTest opts
+                   then return (const [])
+                   else getUnsafeModuleInfos opts
+                          (nub (map (fst . testName) alltests))
+  let (testmods,rmtestnames) = removeNonExecTests opts unsafeinfos orgtestmods
+      testtypes = nub (concatMap userTestDataOfModule testmods)
+  unless (null rmtestnames) $ do
+    putStrIfNormal opts $ unlines
+      [withColor opts red $ "Properties not tested (due to I/O or unsafe):",
+       unwords (map snd rmtestnames)]
   (fcprogs,testtypedecls) <- collectAllTestTypeDecls opts [] [] testtypes
   equvtypedecls <- collectAllTestTypeDecls opts fcprogs []
                      (map (\t->(t,True))
@@ -1098,8 +1108,8 @@ genMainTestModule opts mainmod testmods = do
                [])
     appendix
   let (finaltests,droppedtests) =
-         partition ((`elem` map (snd . funcName) testfuncs) . genTestName)
-                   (concatMap propTests testmods)
+           partition ((`elem` map (snd . funcName) testfuncs) . genTestName)
+                     (concatMap propTests testmods)
   unless (null droppedtests) $ putStrIfNormal opts $
     "\nPOSSIBLY NON-TERMINATING TESTS REMOVED: " ++
     unwords (map (snd . testName) droppedtests) ++ "\n"
@@ -1126,6 +1136,23 @@ genMainFunction opts testModule testfuncs =
                   [applyF (pre "/=") [cvar "x1", cInt 0],
                    applyF ("System", "exitWith") [cvar "x1"]]
      ]
+
+-- Remove all tests that should not be executed.
+-- Thus, if option --noiotest is set, IO tests and tests depending on unsafe
+-- modules are removed.
+-- Returns the test modules where tests are removed and the names of
+-- the removed tests.
+removeNonExecTests :: Options -> (QName -> [String]) -> [TestModule]
+                   -> ([TestModule], [QName])
+removeNonExecTests opts unsafeinfos testmods =
+  (map removeTests testmods,
+   concatMap (map testName . filter (not . isExecTest) . propTests) testmods)
+ where
+  removeTests tm = tm { propTests = filter isExecTest (propTests tm) }
+
+  isExecTest test = optIOTest opts ||
+                    (not (isIOTest test) && null (unsafeinfos (tmod,tmod)))
+   where tmod = dropPublicSuffix (fst (testName test))
 
 -------------------------------------------------------------------------
 -- Collect all type declarations for a given list of type
