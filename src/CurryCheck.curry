@@ -17,14 +17,15 @@
 --- @version June 2018
 -------------------------------------------------------------------------
 
-import AnsiCodes
-import Char                    ( toUpper )
+import System.Console.ANSI.Codes
+import System.Console.GetOpt
+import System.FilePath           ( (</>), pathSeparator, takeDirectory )
+import System.Process            ( system, exitWith, getPID )
+import System.Environment        ( getArgs, getEnv )
+import Data.Char                 ( toUpper )
+import Data.List
+import Data.Maybe                ( fromJust, isJust )
 import Distribution
-import FilePath                ( (</>), pathSeparator, takeDirectory )
-import GetOpt
-import List
-import Maybe                   ( fromJust, isJust )
-import System                  ( system, exitWith, getArgs, getPID, getEnviron )
 
 import AbstractCurry.Types
 import AbstractCurry.Files
@@ -231,9 +232,9 @@ genTestFuncs opts terminating productivity mainmod tm =
                       (emptyClassType (ioType (maybeType stringType))) rs
 
   isTerminating f = terminating f || productivity f == Terminating
-  
+
   isProductive f = productivity f `notElem` [NoInfo, Looping]
-  
+
   msgOf test = string2ac $ genTestMsg (orgModuleName tm) test
 
   testmname = testModuleName tm
@@ -434,7 +435,7 @@ classifyTests opts prog = map makeProperty
                           showCExpr e1 ++ " <=> " ++ showCExpr e2
 
   defaultingType = poly2defaultType opts . typeOfQualType . defaultQualType
-  
+
   funcTypeOf f = maybe (error $ "Cannot find type of " ++ show f ++ "!")
                        funcType
                        (find (\fd -> funcName fd == f) (functions prog))
@@ -651,7 +652,7 @@ poly2default opts fdecl@(CFunc (mn,fname) arity vis qftype rs)
   CQualType clscon ftype = defaultQualType qftype
 
 poly2defaultType :: Options -> CTypeExpr -> CTypeExpr
-poly2defaultType opts texp = p2dt texp 
+poly2defaultType opts texp = p2dt texp
  where
   p2dt (CTVar _)         = baseType (pre (optDefType opts))
   p2dt (CFuncType t1 t2) = CFuncType (p2dt t1) (p2dt t2)
@@ -884,7 +885,7 @@ defaultValueOfBasicExtType qn
   | qn == "Float" = CFloatc 0.0
   | qn == "Char"  = CCharc  'A'
   | otherwise     = error $ "defaultValueOfBasicExtType: unknown type: "++qn
-  
+
 ctype2BotType :: String -> CTypeExpr -> CTypeExpr
 ctype2BotType _ (CTVar i) = CTVar i
 ctype2BotType mainmod (CFuncType t1 t2) =
@@ -931,11 +932,11 @@ genPeval mainmod (FC.Type qtc@(_,tc) _ tvars consdecls) =
        else map genConsRule consdecls)
  where
   botSym = (mainmod,"Bot_"++transQN tc) -- bottom constructor
-  
+
   -- variables for polymorphic type arguments:
   polyavars = [ (i,"a"++show i) | i <- tvars]
   polyrvars = [ (i,"b"++show i) | i <- tvars]
-  
+
   genConsRule (FC.Cons qc@(_,cons) _ _ argtypes) =
     let args  = [(i,"x"++show i) | i <- [0 .. length argtypes - 1]]
         pargs = [(i,"y"++show i) | i <- [0 .. length argtypes - 1]]
@@ -991,7 +992,7 @@ genPValOf mainmod (FC.Type qtc@(_,tc) _ tvars consdecls) =
   -- variables for polymorphic type arguments:
   polyavars = [ (i,"a"++show i) | i <- tvars]
   polyrvars = [ (i,"b"++show i) | i <- tvars]
-  
+
   genConsRule (FC.Cons qc@(_,cons) _ _ argtypes) =
     let args = [(i,"x"++show i) | i <- [0 .. length argtypes - 1]]
     in simpleRule (map CPVar polyavars ++ [CPComb qc (map CPVar args)])
@@ -1183,7 +1184,7 @@ collectAllTestTypeDecls opts fcprogs tdecls testtypenames = do
                 "Reading data types defined in module '" ++ mn ++ "'...\n"
               fprog <- readFlatCurry mn
               readFlatProgsIfNecessary (fprog:progs) mns
-  
+
   -- gets the type declaration for a given type constructor
   -- (could be improved by caching programs that are already read)
   findTypeDecl :: [FC.Prog] -> (QName,Bool) -> (FC.TypeDecl,Bool)
@@ -1295,10 +1296,10 @@ cleanup opts mainmod modules =
 showTestStatistics :: Options -> [Test] -> String
 showTestStatistics opts tests =
   let numtests  = sumOf (const True)
-      unittests = sumOf isUnitTest  
-      proptests = sumOf isPropTest  
-      equvtests = sumOf isEquivTest 
-      iotests   = sumOf isIOTest    
+      unittests = sumOf isUnitTest
+      proptests = sumOf isPropTest
+      equvtests = sumOf isEquivTest
+      iotests   = sumOf isIOTest
    in "TOTAL NUMBER OF TESTS: " ++ show numtests ++
       " (UNIT: " ++ show unittests ++ ", PROPERTIES: " ++
       show proptests ++ ", EQUIVALENCE: " ++ show equvtests ++
@@ -1337,7 +1338,7 @@ main = do
     finaltests <- genMainTestModule opts testmodname finaltestmodules
     showGeneratedModule opts "main test" testmodname
     putStrIfNormal opts $ withColor opts blue $ "and compiling it...\n"
-    ecurrypath <- getEnviron "CURRYPATH"
+    ecurrypath <- getEnv "CURRYPATH"
     let currypath = case ecurrypath of ':':_ -> '.':ecurrypath
                                        _     -> ecurrypath
     let runcmd = unwords $

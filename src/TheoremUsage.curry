@@ -31,11 +31,11 @@ module TheoremUsage
 
 import AbstractCurry.Types
 import AbstractCurry.Select
-import Char
-import Directory
+import Data.Char
+import Data.List
+import System.Directory
+import System.FilePath      (dropExtension, takeDirectory)
 import Distribution         (lookupModuleSourceInLoadPath, modNameToPath)
-import FilePath             (dropExtension, takeDirectory)
-import List
 
 import PropertyUsage
 

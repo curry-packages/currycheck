@@ -18,7 +18,7 @@ module ContractUsage
 import AbstractCurry.Types
 import AbstractCurry.Select
 import AbstractCurry.Build  (boolType)
-import List
+import Data.List
 
 --- Checks the intended usage of contracts.
 checkContractUse :: CurryProg -> [(QName,String)]

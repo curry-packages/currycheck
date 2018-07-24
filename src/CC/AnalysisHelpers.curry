@@ -7,8 +7,8 @@ module CC.AnalysisHelpers
   , dropPublicSuffix )
  where
 
-import AnsiCodes            ( blue )
-import List                 ( intercalate, isSuffixOf )
+import System.Console.ANSI.Codes ( blue )
+import Data.List                 ( intercalate, isSuffixOf )
 
 import AbstractCurry.Types   ( QName )
 import Analysis.Types        ( Analysis )
@@ -64,7 +64,8 @@ dropPublicQName (m,f) = (dropPublicSuffix m, f)
 -- Analyze a list of modules with some static program analysis.
 -- Returns the combined analysis information.
 -- Raises an error if something goes wrong.
-analyzeModules :: Options -> String -> Analysis a -> [String] -> IO (ProgInfo a)
+analyzeModules :: (Read a, Show a) => Options -> String -> Analysis a
+               -> [String] -> IO (ProgInfo a)
 analyzeModules opts ananame analysis mods = do
   putStrIfNormal opts $ withColor opts blue $
     "\nRunning " ++ ananame ++ " analysis on modules: " ++
@@ -75,7 +76,7 @@ analyzeModules opts ananame analysis mods = do
 
 -- Analyze a module with some static program analysis.
 -- Raises an error if something goes wrong.
-analyzeModule :: Analysis a -> String -> IO (ProgInfo a)
+analyzeModule :: (Read a, Show a) => Analysis a -> String -> IO (ProgInfo a)
 analyzeModule analysis mod = do
   aresult <- analyzeGeneric analysis mod
   either return
@@ -84,4 +85,3 @@ analyzeModule analysis mod = do
                    putStrLn "Ignoring analysis information"
                    return emptyProgInfo)
          aresult
-

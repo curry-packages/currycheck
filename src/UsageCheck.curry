@@ -15,10 +15,10 @@ module UsageCheck(checkSetUse, checkBlacklistUse) where
 
 import qualified AbstractCurry.Types as AC
 import AbstractCurryMatch
-import Char(isDigit)
+import Data.Char(isDigit)
 import FlatCurry.Types
 import FlatCurryMatch
-import Read(readNat)
+import Numeric(readNat)
 import SetFunctions
 
 ---------------------------------------------------------------------
@@ -52,7 +52,7 @@ validSetFunCall ct n args
   = if arity==0 then isFuncCall (head args)
                 else isFuncPartCall arity (head args)
  where
-  arity = readNat n
+  arity = read n
 
 isFuncCall :: Expr -> Bool
 isFuncCall e = case e of

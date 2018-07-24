@@ -13,7 +13,7 @@ module DefaultRuleUsage
 
 import AbstractCurry.Types
 import AbstractCurry.Select
-import List
+import Data.List
 
 --- Does a program contains default rules?
 containsDefaultRules :: CurryProg -> Bool

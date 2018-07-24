@@ -7,7 +7,7 @@
 --- prefix `theorem'`, as
 ---
 ---      theorem'sortlength xs = length xs <~> length (sort xs)
----      
+---
 ---      theorem'sorted xs = always (sorted (sort xs))
 ---
 --- @author Michael Hanus
@@ -21,8 +21,8 @@ module SimplifyPostConds
 import AbstractCurry.Types
 import AbstractCurry.Select
 import AbstractCurry.Build
-import List                 (last, maximum)
-import Maybe                (maybeToList)
+import Data.List            (last, maximum)
+import Data.Maybe           (maybeToList)
 import ReadShowTerm         (readQTerm)
 import Rewriting.Files
 import Rewriting.Term
@@ -115,7 +115,7 @@ simplifyRule verb simprules qn crule@(CRule rpats _) = do
     ["POSTCONDITION: " ++ showRule snd (lhs,rhs),
      "POSTCONDEXP:   " ++ showTerm snd postcondexp,
      "SIMPLIFIEDEXP: " ++ showTerm snd simpterm,
-     "SIMPPOSTCOND:  " ++ showRule snd simppostcond ]     
+     "SIMPPOSTCOND:  " ++ showRule snd simppostcond ]
   return (simpleRule rpats (term2acy (concatMap varsOfPat rpats) simppostrhs))
  where
    ((lhs,rhs),trs) = fromRule qn crule
