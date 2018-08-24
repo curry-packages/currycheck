@@ -14,7 +14,7 @@
 ---   (together with possible preconditions).
 ---
 --- @author Michael Hanus, Jan-Patrick Baye
---- @version June 2018
+--- @version August 2018
 -------------------------------------------------------------------------
 
 import AnsiCodes
@@ -56,7 +56,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 08/06/2018)"
+                packageVersion ++ " of 24/08/2018)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -1284,12 +1284,13 @@ cleanup opts mainmod modules =
     removeCurryModule mainmod
     mapIO_ removeCurryModule (map testModuleName modules)
  where
-  removeCurryModule modname = do
-    (_,srcfilename) <- lookupModuleSourceInLoadPath modname >>=
-        return .
-        maybe (error $ "Source file of module '"++modname++"' not found!") id
-    system $ installDir </> "bin" </> "cleancurry" ++ " " ++ modname
-    system $ "rm -f " ++ srcfilename
+  removeCurryModule modname =
+    lookupModuleSourceInLoadPath modname >>=
+    maybe done
+          (\ (_,srcfilename) -> do
+            system $ installDir </> "bin" </> "cleancurry" ++ " " ++ modname
+            system $ "rm -f " ++ srcfilename
+            done )
 
 -- Show some statistics about number of tests:
 showTestStatistics :: Options -> [Test] -> String
