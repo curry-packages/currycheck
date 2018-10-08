@@ -288,7 +288,8 @@ genTestFuncs opts terminating productivity mainmod tm =
                             [if isPAKCS || useUserDefinedGen t || isFloatType t
                              then type2genop mainmod tm genpart t
                              else applyF (searchTreeModule,"someSearchTree")
-                                         [constF (pre "unknown")]])
+                                         [CTyped (constF (pre "unknown"))
+                                                 (emptyClassType t)]])
                          argtypes) ++
                     [propexp]
                  ])]
