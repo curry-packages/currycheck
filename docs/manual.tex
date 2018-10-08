@@ -473,81 +473,6 @@ or we simply reuse the old definition by
 sumUpIsCorrectOnNonNeg = sumUpIsCorrect . nonNeg
 \end{curry}
 
-\subsection{Checking Contracts and Specifications}
-\label{sec:currycheck:contracts}
-
-The expressive power of Curry supports
-writing high-level specifications
-as well as efficient implementations for a given problem
-in the same programming language,
-as discussed in \cite{AntoyHanus12PADL}.
-If a specification or contract is provided for some function,
-then CurryCheck automatically generates properties
-to test this specification or contract.
-
-Following the notation proposed in \cite{AntoyHanus12PADL},
-a \emph{specification}\index{specification}
-for an operation $f$ is an operation \code{$f$'spec}
-of the same type as $f$.
-A \emph{contract}\index{constract} consists
-of a pre- and a postcondition, where the precondition could be omitted.
-A \emph{precondition}\index{precondition} for an operation $f$
-of type $\tau \to \tau'$ is an operation
-\begin{curry}
-$f$'pre :: $\tau$ ->$~$Bool
-\end{curry}
-whereas
-a \emph{postcondition}\index{postcondition} for $f$
-is an operation
-\begin{curry}
-$f$'post :: $\tau$ ->$~\tau'$ ->$~$Bool
-\end{curry}
-which relates input and output values
-(the generalization to operations with more than one argument
-is straightforward).
-
-As a concrete example, consider again the problem of sorting a list.
-We can write a postcondition and a specification for
-a sort operation \code{sort} and an implementation via quicksort
-as follows (where \code{sorted} and \code{perm}
-are defined as above):
-
-\begin{curry}
--- Postcondition: input and output lists should have the same length
-sort'post xs ys = length xs == length ys
-
--- Specification:
--- A correct result is a permutation of the input which is sorted.
-sort'spec :: [Int] -> [Int]
-sort'spec xs | ys == perm xs && sorted ys = ys  where ys free
-
--- An implementation of sort with quicksort:
-sort :: [Int] -> [Int]
-sort []     = []
-sort (x:xs) = sort (filter (<x) xs) ++ [x] ++ sort (filter (>=x) xs)
-\end{curry}
-%
-If we process this program with CurryCheck,
-properties to check the specification and postcondition
-are automatically generated. For instance,
-a specification is satisfied if it yields the same values as
-the implementation, and a postcondition is satisfied
-if each value computed for some input satisfies the postcondition
-relation between input and output. For our example, CurryCheck generates
-the following properties (if there are also
-preconditions for some operation, these preconditions are used
-to restrict the test cases via the condition operater \ccode{==>}):
-
-\begin{curry}
-sortSatisfiesPostCondition :: [Int] -> Prop
-sortSatisfiesPostCondition x =
-  let r = sort x
-  in (r == r) ==> always (sort'post x r)
-
-sortSatisfiesSpecification :: [Int] -> Prop
-sortSatisfiesSpecification x = sort x <~> sort'spec x
-\end{curry}
-
 \subsection{Checking Equivalence of Operations}
 
 CurryCheck supports also equivalence tests for operations.
@@ -673,7 +598,97 @@ Otherwise, the equivalence property is \emph{not} tested.
 Thus, this mode is useful if one wants to ensure that all
 equivalence tests always terminate (provided that the additional
 user annotations are correct).
+\item[\code{ground}:]
+In this mode, only ground equivalence is tested, i.e.,
+each equivalence property
+\begin{curry}
+g1_equiv_g2 = g1 <=> g2
+\end{curry}
+is transformed into a property which states that both
+operations must deliver the same values on same input values, i.e.,
+\begin{curry}
+g1_equiv_g2 x1 ... xn = g1 x1 ... xn <~> g2 x1 ... xn
+\end{curry}
+Note this property is more restrictive than contextual equivalence.
+For instance, the non-equivalence of \code{g1} and \code{g2}
+as shown above cannot be detected by testing ground equivalence only.
 \end{description}
+
+
+\subsection{Checking Contracts and Specifications}
+\label{sec:currycheck:contracts}
+
+The expressive power of Curry supports
+writing high-level specifications
+as well as efficient implementations for a given problem
+in the same programming language,
+as discussed in \cite{AntoyHanus12PADL}.
+If a specification or contract is provided for some function,
+then CurryCheck automatically generates properties
+to test this specification or contract.
+
+Following the notation proposed in \cite{AntoyHanus12PADL},
+a \emph{specification}\index{specification}
+for an operation $f$ is an operation \code{$f$'spec}
+of the same type as $f$.
+A \emph{contract}\index{constract} consists
+of a pre- and a postcondition, where the precondition could be omitted.
+A \emph{precondition}\index{precondition} for an operation $f$
+of type $\tau \to \tau'$ is an operation
+\begin{curry}
+$f$'pre :: $\tau$ ->$~$Bool
+\end{curry}
+whereas
+a \emph{postcondition}\index{postcondition} for $f$
+is an operation
+\begin{curry}
+$f$'post :: $\tau$ ->$~\tau'$ ->$~$Bool
+\end{curry}
+which relates input and output values
+(the generalization to operations with more than one argument
+is straightforward).
+
+As a concrete example, consider again the problem of sorting a list.
+We can write a postcondition and a specification for
+a sort operation \code{sort} and an implementation via quicksort
+as follows (where \code{sorted} and \code{perm}
+are defined as above):
+
+\begin{curry}
+-- Postcondition: input and output lists should have the same length
+sort'post xs ys = length xs == length ys
+
+-- Specification:
+-- A correct result is a permutation of the input which is sorted.
+sort'spec :: [Int] -> [Int]
+sort'spec xs | ys == perm xs && sorted ys = ys  where ys free
+
+-- An implementation of sort with quicksort:
+sort :: [Int] -> [Int]
+sort []     = []
+sort (x:xs) = sort (filter (<x) xs) ++ [x] ++ sort (filter (>=x) xs)
+\end{curry}
+%
+If we process this program with CurryCheck,
+properties to check the specification and postcondition
+are automatically generated. For instance,
+a specification is satisfied if it is equivalent to its
+implementation, and a postcondition is satisfied
+if each value computed for some input satisfies the postcondition
+relation between input and output. For our example, CurryCheck generates
+the following properties (if there are also
+preconditions for some operation, these preconditions are used
+to restrict the test cases via the condition operater \ccode{==>}):
+
+\begin{curry}
+sortSatisfiesPostCondition :: [Int] -> Prop
+sortSatisfiesPostCondition x =
+  let r = sort x
+  in (r == r) ==> always (sort'post x r)
+
+sortSatisfiesSpecification :: Prop
+sortSatisfiesSpecification = sort <=> sort'spec
+\end{curry}
 
 
 \subsection{Checking Usage of Specific Operations}

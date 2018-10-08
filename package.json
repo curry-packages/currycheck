@@ -26,14 +26,18 @@
         { "src-dir": "examples",
           "options": "-m70",
           "modules": [ "DefaultRulesTest", "DetOperations", "ExampleTests",
-                       "ExamplesFromManual", "FloatTest", "ListSpecifications",
+                       "ExamplesFromManual", "FloatTest",
                        "Nats", "SEBF", "Sum", "SortSpec", "Tree" ]
+        },
+        { "src-dir": "examples",
+          "options": "-m70 -e ground",
+          "modules": [ "ListSpecifications" ]
         },
         { "src-dir": "examples/withVerification",
           "modules": [ "ListProp", "SortSpec" ]
         },
         { "src-dir": "examples/equivalent_operations",
-          "modules": [ "SortISortEquiv" ]
+          "modules": [ "Fac", "SortISortEquiv" ]
         }
     ],
     "documentation": {

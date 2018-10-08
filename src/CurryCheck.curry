@@ -14,7 +14,7 @@
 ---   (together with possible preconditions).
 ---
 --- @author Michael Hanus, Jan-Patrick Baye
---- @version August 2018
+--- @version October 2018
 -------------------------------------------------------------------------
 
 import AnsiCodes
@@ -56,7 +56,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 24/08/2018)"
+                packageVersion ++ " of 08/10/2018)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -149,18 +149,20 @@ genTestName test =
 -- * test operations
 -- * name of generators defined in this module (i.e., starting with "gen"
 --   and of appropriate result type)
+-- * the names of functions with preconditions defined in the test module
 data TestModule = TestModule
   { orgModuleName  :: String
   , testModuleName :: String
   , staticErrors   :: [String]
   , propTests      :: [Test]
   , generators     :: [QName]
+  , preConditions  :: [QName]
   }
 
 -- A test module with only static errors.
 staticErrorTestMod :: String -> [String] -> TestModule
 staticErrorTestMod modname staterrs =
- TestModule modname modname staterrs [] []
+ TestModule modname modname staterrs [] [] []
 
 -- Is this a test module that should be tested?
 testThisModule :: TestModule -> Bool
@@ -250,9 +252,10 @@ genTestFuncs opts terminating productivity mainmod tm =
         pvalOfFunc = ctype2pvalOf mainmod "pvalOf" (resultType texp)
     in propOrEquivBody (map (\t -> (t,True)) (argTypes texp)) test
          (cLambda (map CPVar xvars)
-            (applyF (easyCheckModule,"<~>")
-                    [applyE pvalOfFunc [applyF f1 (map CVar xvars)],
-                     applyE pvalOfFunc [applyF f2 (map CVar xvars)]]))
+            (addPreCond (preConditions tm) [f1,f2] xvars
+              (applyF (easyCheckModule,"<~>")
+                      [applyE pvalOfFunc [applyF f1 (map CVar xvars)],
+                       applyE pvalOfFunc [applyF f2 (map CVar xvars)]])))
 
   -- Operation equivalence test for arbitrary operations:
   equivBodyAny f1 f2 texp test =
@@ -264,9 +267,10 @@ genTestFuncs opts terminating productivity mainmod tm =
           [(ctype2BotType mainmod  (resultType texp), False)])
          test
          (CLambda (map CPVar xvars ++ [CPVar pvar])
-            (applyF (easyCheckModule,"<~>")
-               [applyE pvalOfFunc [applyF f1 (map CVar xvars), CVar pvar],
-                applyE pvalOfFunc [applyF f2 (map CVar xvars), CVar pvar]]))
+            (addPreCond (preConditions tm) [f1,f2] xvars
+              (applyF (easyCheckModule,"<~>")
+                 [applyE pvalOfFunc [applyF f1 (map CVar xvars), CVar pvar],
+                  applyE pvalOfFunc [applyF f2 (map CVar xvars), CVar pvar]])))
 
   propBody qname texp test =
     propOrEquivBody (map (\t -> (t,False)) (argTypes texp))
@@ -408,30 +412,29 @@ makeAllPublic (CurryProg modname imports dfltdecl clsdecls instdecls
   makePublic (CmtFunc cmt name arity _      typeExpr rules) =
               CmtFunc cmt name arity Public typeExpr rules
 
--- classify the tests as either PropTest or IOTest
-classifyTests :: Options -> CurryProg -> [CFuncDecl] -> [Test]
-classifyTests opts prog = map makeProperty
+-- Classify the test represented by a function declaration
+-- as either PropTest or IOTest.
+classifyTest :: Options -> CurryProg -> CFuncDecl -> Test
+classifyTest opts prog test =
+  if isPropIOType (typeOfQualType (funcType test))
+    then IOTest tname 0
+    else maybe (PropTest tname (typeOfQualType (funcType test)) 0)
+               expsToEquivTest
+               (isEquivProperty test)
  where
-  makeProperty test =
-    if isPropIOType (typeOfQualType (funcType test))
-      then IOTest tname 0
-      else maybe (PropTest tname (typeOfQualType (funcType test)) 0)
-                 expsToEquivTest
-                 (isEquivProperty test)
-    where
-     tname = funcName test
+  tname = funcName test
 
-     expsToEquivTest exps = case exps of
-       (CSymbol f1,CSymbol f2) ->
-         EquivTest tname f1 f2 (defaultingType (funcTypeOf f1)) 0
-       (CTyped (CSymbol f1) qtexp, CSymbol f2) ->
-         EquivTest tname f1 f2 (defaultingType qtexp) 0
-       (CSymbol f1, CTyped (CSymbol f2) qtexp) ->
-         EquivTest tname f1 f2 (defaultingType qtexp) 0
-       (CTyped (CSymbol f1) qtexp, CTyped (CSymbol f2) _) ->
-         EquivTest tname f1 f2 (defaultingType qtexp) 0
-       (e1,e2) -> error $ "Illegal equivalence property:\n" ++
-                          showCExpr e1 ++ " <=> " ++ showCExpr e2
+  expsToEquivTest exps = case exps of
+    (CSymbol f1,CSymbol f2) ->
+      EquivTest tname f1 f2 (defaultingType (funcTypeOf f1)) 0
+    (CTyped (CSymbol f1) qtexp, CSymbol f2) ->
+      EquivTest tname f1 f2 (defaultingType qtexp) 0
+    (CSymbol f1, CTyped (CSymbol f2) qtexp) ->
+      EquivTest tname f1 f2 (defaultingType qtexp) 0
+    (CTyped (CSymbol f1) qtexp, CTyped (CSymbol f2) _) ->
+      EquivTest tname f1 f2 (defaultingType qtexp) 0
+    (e1,e2) -> error $ "Illegal equivalence property:\n" ++
+                       showCExpr e1 ++ " <=> " ++ showCExpr e2
 
   defaultingType = poly2defaultType opts . typeOfQualType . defaultQualType
   
@@ -441,10 +444,12 @@ classifyTests opts prog = map makeProperty
 
 -- Extracts all tests from a given Curry module and transforms
 -- all polymorphic tests into tests on a base type.
--- The result contains a triple consisting of all actual tests,
--- all ignored tests, and the public version of the original module.
+-- The result contains a tuple consisting of all actual tests,
+-- all ignored tests, the name of all operations with defined preconditions
+-- (needed to generate meaningful equivalence tests),
+-- and the public version of the original module.
 transformTests :: Options -> String -> CurryProg
-               -> IO ([CFuncDecl],[CFuncDecl],CurryProg)
+               -> IO ([CFuncDecl],[CFuncDecl],[QName],CurryProg)
 transformTests opts srcdir
                prog@(CurryProg mname imps dfltdecl clsdecls instdecls
                                typeDecls functions opDecls) = do
@@ -459,7 +464,8 @@ transformTests opts srcdir
       -- generate post condition tests:
       postCondTests = concatMap (genPostCondTest preCondOps postCondOps) funcs
       -- generate specification tests:
-      specOpTests   = concatMap (genSpecTest preCondOps specOps) funcs
+      specOpTests   = concatMap (genSpecTest opts preCondOps specOps) funcs
+      grSpecOpTests = if optEquiv opts == Ground then specOpTests else []
 
       (realtests,ignoredtests) = partition fst $
         if not (optProp opts)
@@ -468,9 +474,11 @@ transformTests opts srcdir
                -- ignore already proved properties:
                filter (\fd -> funcName fd `notElem` map funcName theofuncs)
                       usertests ++
-               (if optSpec opts then postCondTests ++ specOpTests else [])
-  return (map snd realtests,
+               (if optSpec opts then grSpecOpTests ++ postCondTests else [])
+  return (map snd realtests ++
+          (if optSpec opts && optEquiv opts /= Ground then specOpTests else []),
           map snd ignoredtests,
+          preCondOps,
           CurryProg mname
                     (nub (easyCheckModule:imps))
                     dfltdecl clsdecls instdecls
@@ -478,8 +486,28 @@ transformTests opts srcdir
                     (simpfuncs ++ map snd (realtests ++ ignoredtests))
                     opDecls)
  where
-  (usertests, funcs) = partition isProperty functions
+  (rawusertests, funcs) = partition isProperty functions
 
+  usertests = if optEquiv opts == Ground
+                then map equivProp2Ground rawusertests
+                else rawusertests
+
+  -- transform an equivalence property (f1 <=> f2) into a property
+  -- testing ground equivalence, i.e., f1 x1...xn <~> f2 x1...xn
+  equivProp2Ground fdecl =
+    maybe fdecl
+          (\ _ -> case classifyTest opts prog fdecl of
+            EquivTest _ f1 f2 texp _ ->
+             let ar    = arityOfType texp
+                 cvars = map (\i -> (i,"x"++show i)) [1 .. ar]
+             in stFunc (funcName fdecl) ar Public (propResultType texp)
+                  [simpleRule (map CPVar cvars)
+                              (applyF (easyCheckModule,"<~>")
+                                      [applyF f1 (map CVar cvars),
+                                       applyF f2 (map CVar cvars)])]
+            _ -> error "transformTests: internal error"
+          )
+          (isEquivProperty fdecl)
 
 -- Extracts all determinism tests from a given Curry module and
 -- transforms deterministic operations back into non-deterministic operations
@@ -540,18 +568,14 @@ propResultType te = case te of
 -- fSatisfiesPostCondition x1...xn y = always (f'post x1...xn (f x1...xn))
 genPostCondTest :: [QName] -> [QName] -> CFuncDecl -> [CFuncDecl]
 genPostCondTest prefuns postops (CmtFunc _ qf ar vis texp rules) =
-  genSpecTest prefuns postops (CFunc qf ar vis texp rules)
+  genPostCondTest prefuns postops (CFunc qf ar vis texp rules)
 genPostCondTest prefuns postops
                 (CFunc qf@(mn,fn) _ _ (CQualType clscon texp) _) =
  if qf `notElem` postops then [] else
   [CFunc (mn, fn ++ postCondSuffix) ar Public
     (CQualType clscon (propResultType texp))
     [simpleRule (map CPVar cvars) $
-      if qf `elem` prefuns
-       then applyF (easyCheckModule,"==>")
-                   [applyF (mn,toPreCondName fn) (map CVar cvars), postprop]
-       else postprop
-    ]]
+       addPreCond prefuns [qf] cvars postprop ]]
  where
   ar       = arityOfType texp
   cvars    = map (\i -> (i,"x"++show i)) [1 .. ar]
@@ -562,29 +586,57 @@ genPostCondTest prefuns postops
 
 -- Transforms a function declaration into a specification test if
 -- there is a specification for this function (i.e., an operation named
--- f'spec). The specification test is of the form
+-- f'spec). The generated specification test has the form
+--     fSatisfiesSpecification = f <=> f'spec
+genSpecTest :: Options -> [QName] -> [QName] -> CFuncDecl -> [CFuncDecl]
+genSpecTest opts prefuns specops (CmtFunc _ qf ar vis texp rules) =
+  genSpecTest opts prefuns specops (CFunc qf ar vis texp rules)
+genSpecTest opts prefuns specops
+            (CFunc qf@(mn,fn) _ _ (CQualType clscon texp) _)
+ | qf `notElem` specops
+ = []
+ | optEquiv opts == Ground
+ = [genSpecGroundEquivTest prefuns qf clscon texp]
+ | otherwise
+ = [CFunc (mn, fn ++ satSpecSuffix) 0 Public
+          (emptyClassType (propResultType unitType))
+          [simpleRule [] (applyF (easyCheckModule,"<=>")
+                                 [constF qf, constF (mn,toSpecName fn)])]]
+
+-- Transforms a function declaration into a ground equivalence test
+-- against the specification (i.e., an operation named `f'spec` exists).
+-- The generated specification test is of the form
 -- fSatisfiesSpecification x1...xn =
 --   f'pre x1...xn  ==> (f x1...xn <~> f'spec x1...xn)
-genSpecTest :: [QName] -> [QName] -> CFuncDecl -> [CFuncDecl]
-genSpecTest prefuns specops (CmtFunc _ qf ar vis texp rules) =
-  genSpecTest prefuns specops (CFunc qf ar vis texp rules)
-genSpecTest prefuns specops
-            (CFunc qf@(mn,fn) _ _ (CQualType clscon texp) _) =
- if qf `notElem` specops then [] else
-  [CFunc (mn, fn ++ satSpecSuffix) ar Public
+genSpecGroundEquivTest :: [QName] -> QName -> CContext -> CTypeExpr -> CFuncDecl
+genSpecGroundEquivTest prefuns qf@(mn,fn) clscon texp =
+  CFunc (mn, fn ++ satSpecSuffix) ar Public
     (CQualType (addShowContext clscon) (propResultType texp))
     [simpleRule (map CPVar cvars) $
-       addPreCond (applyF (easyCheckModule,"<~>")
-                          [applyF qf (map CVar cvars),
-                           applyF (mn,toSpecName fn) (map CVar cvars)])]]
+       addPreCond prefuns [qf,qfspec] cvars
+         (applyF (easyCheckModule,"<~>")
+                 [applyF qf (map CVar cvars),
+                  applyF (mn,toSpecName fn) (map CVar cvars)])]
  where
-  cvars = map (\i -> (i,"x"++show i)) [1 .. ar]
-  ar    = arityOfType texp
+  ar     = arityOfType texp
+  cvars  = map (\i -> (i,"x"++show i)) [1 .. ar]
+  qfspec = (mn, toSpecName fn)
 
-  addPreCond exp = if qf `elem` prefuns
-                   then applyF (easyCheckModule,"==>")
-                          [applyF (mn,toPreCondName fn) (map CVar cvars), exp]
-                   else exp
+-- Adds the preconditions of operations (second argument), if they are
+-- present in the list of functions with preconditions in the first argument,
+-- on the given variables to the property expression `propexp`.
+addPreCond :: [QName] -> [QName] -> [CVarIName] -> CExpr -> CExpr
+addPreCond prefuns fs pvars propexp =
+ let preconds = concatMap precondCall fs
+ in if null preconds
+      then propexp
+      else applyF (easyCheckModule,"==>")
+                  [foldr1 (\x y -> applyF (pre "&&") [x,y]) preconds, propexp]
+ where
+  precondCall qn@(mn,fn) =
+    if qn `elem` prefuns
+      then [applyF (mn, toPreCondName fn) (map CVar pvars)]
+      else []
 
 -- Revert the transformation for deterministic operations performed
 -- by currypp, i.e., replace rule "f x = selectValue (set f_ORGNDFUN x)"
@@ -619,10 +671,7 @@ genDetProp prefuns (CFunc (mn,fn) ar _ (CQualType clscon texp) _) =
   CFunc (mn, forg ++ isDetSuffix) ar Public
    (CQualType (addShowContext clscon) (propResultType texp))
    [simpleRule (map CPVar cvars) $
-      if (mn,forg) `elem` prefuns
-       then applyF (easyCheckModule,"==>")
-                   [applyF (mn,toPreCondName forg) (map CVar cvars), rnumcall]
-       else rnumcall ]
+      addPreCond prefuns [(mn,forg)] cvars rnumcall ]
  where
   forg     = take (length fn - 9) fn
   cvars    = map (\i -> (i,"x"++show i)) [1 .. ar]
@@ -784,7 +833,7 @@ analyseCurryProg opts modname orgprog = do
   let words      = map firstWord (lines progtxt)
       staticerrs = missingCPP ++ map (showOpError words) staticoperrs
   putStrIfDetails opts "Generating property tests...\n"
-  (rawTests,ignoredTests,pubmod) <-
+  (rawTests,ignoredTests,preCondOps,pubmod) <-
         transformTests opts srcdir . renameCurryModule (modname++"_PUBLIC")
                                    . makeAllPublic $ prog
   let (rawDetTests,ignoredDetTests,pubdetmod) =
@@ -803,14 +852,16 @@ analyseCurryProg opts modname orgprog = do
                          (progName pubmod)
                          staticerrs
                          (addLinesNumbers words
-                            (classifyTests opts pubmod rawTests))
+                            (map (classifyTest opts pubmod) rawTests))
                          (generatorsOfProg pubmod)
+                         preCondOps
       dettm = TestModule modname
                          (progName pubdetmod)
                          []
                          (addLinesNumbers words
-                            (classifyTests opts pubdetmod rawDetTests))
+                            (map (classifyTest opts pubdetmod) rawDetTests))
                          (generatorsOfProg pubmod)
+                         []
   when (testThisModule tm) $ writeCurryProgram opts topdir pubmod ""
   when (testThisModule dettm) $ writeCurryProgram opts topdir pubdetmod ""
   return (if testThisModule dettm then [tm,dettm] else [tm])
