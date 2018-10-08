@@ -14,7 +14,7 @@
 ---   (together with possible preconditions).
 ---
 --- @author Michael Hanus, Jan-Patrick Baye
---- @version June 2018
+--- @version October 2018
 -------------------------------------------------------------------------
 
 import AnsiCodes
@@ -51,7 +51,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 01/06/2018)"
+                packageVersion ++ " of 08/10/2018)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -482,7 +482,7 @@ propResultType te = case te of
 -- fSatisfiesPostCondition x1...xn y = always (f'post x1...xn (f x1...xn))
 genPostCondTest :: [QName] -> [QName] -> CFuncDecl -> [CFuncDecl]
 genPostCondTest prefuns postops (CmtFunc _ qf ar vis texp rules) =
-  genSpecTest prefuns postops (CFunc qf ar vis texp rules)
+  genPostCondTest prefuns postops (CFunc qf ar vis texp rules)
 genPostCondTest prefuns postops (CFunc qf@(mn,fn) _ _ texp _) =
  if qf `notElem` postops then [] else
   [CFunc (mn, fn ++ postCondSuffix) ar Public
