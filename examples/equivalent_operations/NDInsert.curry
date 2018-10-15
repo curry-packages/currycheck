@@ -3,12 +3,12 @@
 
 import Test.Prop
 
--- Non-deterministic defined by overlapping rules:
+-- Non-deterministic list insertion defined by overlapping rules:
 ndinsert1 :: a -> [a] -> [a]
 ndinsert1 x ys     = x : ys
 ndinsert1 x (y:ys) = y : ndinsert1 x ys
 
--- Non-deterministic defined by non-overlapping rules:
+-- Non-deterministic list insertion defined by non-overlapping rules:
 ndinsert2 :: a -> [a] -> [a]
 ndinsert2 x []     = [x]
 ndinsert2 x (y:ys) = x : y : ys  ?  y : ndinsert2 x ys

@@ -37,7 +37,7 @@
           "modules": [ "ListProp", "SortSpec" ]
         },
         { "src-dir": "examples/equivalent_operations",
-          "modules": [ "Fac", "SortISortEquiv" ]
+          "modules": [ "Fac", "SelectionSort", "SortISortEquiv" ]
         }
     ],
     "documentation": {
