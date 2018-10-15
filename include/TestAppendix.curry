@@ -74,16 +74,12 @@ list2Func (Func abs) x = maybe (if null abs then failed else snd (head abs))
 genFunction :: Eq a => SearchTree.SearchTree a -> SearchTree.SearchTree b
                     -> SearchTree.SearchTree (a -> b)
 genFunction gena genb =
-  mapST l2f (genNEList (SearchTreeGenerators.genPair gena genb))
+  SearchTreeGenerators.genCons1 l2f
+    (genNEList (SearchTreeGenerators.genPair gena genb))
  where
   l2f abs x = maybe (if null abs then failed else snd (head abs))
                     id
                     (lookup x abs)
-
-mapST :: (a -> b) -> SearchTree.SearchTree a -> SearchTree.SearchTree b
-mapST f (SearchTree.Value a)  = SearchTree.Value (f a)
-mapST _ (SearchTree.Fail n)   = SearchTree.Fail n
-mapST f (SearchTree.Or t1 t2) = SearchTree.Or (mapST f t1) (mapST f t2)
 
 instance (Show a, Show b) => Show (a -> b) where
   show f = "<<function>>"
