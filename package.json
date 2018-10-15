@@ -26,7 +26,7 @@
         { "src-dir": "examples",
           "options": "-m70",
           "modules": [ "DefaultRulesTest", "DetOperations", "ExampleTests",
-                       "ExamplesFromManual", "FloatTest",
+                       "ExamplesFromManual", "FloatTest", "HigherOrder",
                        "Nats", "SEBF", "Sum", "SortSpec", "Tree" ]
         },
         { "src-dir": "examples",

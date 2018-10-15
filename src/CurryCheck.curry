@@ -56,7 +56,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 08/10/2018)"
+                packageVersion ++ " of 15/10/2018)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -286,18 +286,17 @@ genTestFuncs opts terminating productivity mainmod tm =
                     (map (\ (t,genpart) ->
                           applyF (easyCheckModule,"valuesOfSearchTree")
                             [if isPAKCS || useUserDefinedGen t || isFloatType t
-                             then type2genop mainmod tm genpart t
+                             then type2genop mainmod tm genpart True t
                              else applyF (searchTreeModule,"someSearchTree")
                                          [CTyped (constF (pre "unknown"))
                                                  (emptyClassType t)]])
                          argtypes) ++
-                    [propexp]
+                    [transFuncArgsInProp mainmod argtypes propexp]
                  ])]
    where
     useUserDefinedGen texp = case texp of
       CTVar _       -> error "No polymorphic generator!"
-      CFuncType _ _ -> error $ "No generator for functional types:\n" ++
-                               showCTypeExpr texp
+      CFuncType _ _ -> True
       CTApply _ _   ->
         maybe (error "No generator for type applications!")
               (\ ((_,tc),_) -> isJust
@@ -336,17 +335,19 @@ easyCheckConfig opts =
 
 -- Translates a type expression into calls to generator operations.
 -- If the third argument is `True`, calls to partial generators are used.
-type2genop :: String -> TestModule -> Bool -> CTypeExpr -> CExpr
-type2genop _ _ _ (CTVar _)       = error "No polymorphic generator!"
-type2genop _ _ _ te@(CFuncType _ _) =
-  error $ "No generator for functional types:\n" ++ showCTypeExpr te
-type2genop mainmod tm genpart (CTCons qt) =
+-- The fourth argument is `True` when top-level types are translated.
+type2genop :: String -> TestModule -> Bool -> Bool -> CTypeExpr -> CExpr
+type2genop _ _ _ _ (CTVar _) = error "No polymorphic generator!"
+type2genop mainmod tm genpart top (CFuncType ta tb) =
+  applyF (mainmod, if top then "genFunc" else "genFunction")
+         (map (type2genop mainmod tm genpart False) [ta,tb])
+type2genop mainmod tm genpart _ (CTCons qt) =
   constF (typename2genopname mainmod (generators tm) genpart qt)
-type2genop mainmod tm genpart te@(CTApply _ _) =
+type2genop mainmod tm genpart _ te@(CTApply _ _) =
   maybe (error "No generator for type applications!")
         (\ (qt,targs) ->
            applyF (typename2genopname mainmod (generators tm) genpart qt)
-                  (map (type2genop mainmod tm genpart) targs))
+                  (map (type2genop mainmod tm genpart False) targs))
         (tconsArgsOfType te)
 
 isFloatType :: CTypeExpr -> Bool
@@ -383,6 +384,31 @@ transQN tcons | tcons == "[]"     = "List"
               | tcons == "(,,,)"  = "Tuple4"
               | tcons == "(,,,,)" = "Tuple5"
               | otherwise         = tcons
+
+-------------------------------------------------------------------------
+-- If some arguments of a property are functional, translate these
+-- arguments (which have generated values of type `[(a,b)]`) into
+-- a function by introducing let bindings and use `list2func`.
+-- For instance, a property `p` with argument types `[(Int->Int), [Int]]`
+-- is translated into the expression
+--     \x1 x2 -> let fx1 = list2func x1 in p fx1 x2
+transFuncArgsInProp :: String -> [(CTypeExpr,Bool)] -> CExpr -> CExpr
+transFuncArgsInProp mainmod argtypes propexp
+  | any (isFunctionalType . fst) argtypes
+  = CLambda (map CPVar vars)
+            (let (nvars,locals) = unzip (map ftype2let (zip argtypes vars))
+             in letExpr (concat locals) (applyE propexp (map CVar nvars)))
+  | otherwise = propexp
+ where
+  vars = map (\i -> (i,"x"++show i)) [1 .. length argtypes]
+
+  ftype2let ((texp,_),v@(j,xj)) =
+    if isFunctionalType texp
+      then let fx = (j + length argtypes, 'f':xj)
+           in (fx,
+               [CLocalPat (CPVar fx)
+                  (CSimpleRhs (applyF (mainmod,"list2Func") [CVar v]) [])])
+      else (v,[])
 
 -------------------------------------------------------------------------
 -- Turn all functions into public ones.
@@ -1150,10 +1176,11 @@ genMainTestModule opts mainmod orgtestmods = do
   let mainFunction = genMainFunction opts mainmod testfuncs
       imports      = nub $ [ easyCheckModule, easyCheckExecModule
                            , searchTreeModule, generatorModule
-                           , "AnsiCodes","Maybe","System","Profile"] ++
+                           , "List", "AnsiCodes", "Maybe", "System"
+                           , "Profile"] ++
                            map (fst . fst) testtypes ++
                            map testModuleName testmods
-  appendix <- readFile (packagePath </> "src" </> "TestAppendix.curry")
+  appendix <- readFile (packagePath </> "include" </> "TestAppendix.curry")
   writeCurryProgram opts "."
     (CurryProg mainmod imports Nothing [] [] bottypes
                (mainFunction : testfuncs ++ generators ++ pvalfuns ++ pevalfuns)
