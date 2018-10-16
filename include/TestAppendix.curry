@@ -85,3 +85,21 @@ instance (Show a, Show b) => Show (a -> b) where
   show f = "<<function>>"
 
 -------------------------------------------------------------------------
+-- Auxiliaries for showing partial values:
+
+-- Show bottom value
+bottomValue :: String
+bottomValue = "failed"
+
+-- Show constructed value (first argument is constructor)
+constrValue :: [String] -> String
+constrValue xs = case xs of
+  []      -> ""
+  [c]     -> c
+  [c,x,y] -> if Char.isAlpha (head c) then bracket $ unwords xs
+                                      else bracket $ unwords [x,c,y]
+  _       -> bracket $ unwords xs
+ where
+  bracket s = '(' : s ++ ")"
+ 
+-------------------------------------------------------------------------
