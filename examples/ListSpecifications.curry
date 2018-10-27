@@ -1,7 +1,21 @@
 --- This module contains some specifications of operations from the List
 --- module.
---- Since the preprocessor also depends on the list module,
+--- Since the Curry preprocessor also depends on the list module,
 --- we cannot write these specifications directly into the list module.
+---
+--- To test it, execute
+---
+---     > curry-check -e ground ListSpecifications
+---
+--- Note that the option `-e ground` is only necessary for PAKCS
+--- since PAKCS has an incomplete implementation of set functions
+--- which results in an intended behavior of default rules.
+--- For instance,
+---
+---     > isPrefixOf      ([]::[Int]) failed   --> True
+---     > isPrefixOf'spec ([]::[Int]) failed   --> no value
+---
+--- whereas both yields in `True` in KiCS2.
 
 {-# OPTIONS_CYMAKE -F --pgmF=currypp --optF=defaultrules #-}
 

@@ -10,7 +10,8 @@
         "cass"          : ">= 3.0.0",
         "flatcurry"     : ">= 3.0.0",
         "rewriting"     : ">= 3.0.0",
-        "wl-pprint"     : ">= 2.0.0"
+        "wl-pprint"     : ">= 2.0.0",
+        "base"          : ">= 2.0.0"
     },
     "compilerCompatibility": {
         "pakcs": ">= 2.0.0",
@@ -25,14 +26,18 @@
         { "src-dir": "examples",
           "options": "-m70",
           "modules": [ "DefaultRulesTest", "DetOperations", "ExampleTests",
-                       "ExamplesFromManual", "FloatTest", "ListSpecifications",
+                       "ExamplesFromManual", "FloatTest", "HigherOrder",
                        "Nats", "SEBF", "Sum", "SortSpec", "Tree" ]
+        },
+        { "src-dir": "examples",
+          "options": "-m70 -e ground",
+          "modules": [ "ListSpecifications" ]
         },
         { "src-dir": "examples/withVerification",
           "modules": [ "ListProp", "SortSpec" ]
         },
         { "src-dir": "examples/equivalent_operations",
-          "modules": [ "SortISortEquiv" ]
+          "modules": [ "Fac", "SelectionSort", "SortISortEquiv" ]
         }
     ],
     "documentation": {
