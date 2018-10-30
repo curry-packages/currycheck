@@ -25,7 +25,7 @@
     "testsuite": [
         { "src-dir": "examples",
           "options": "-m70",
-          "modules": [ "DefaultRulesTest", "DetOperations", "ExampleTests",
+          "modules": [ "DefaultRulesTest", "DetOps", "ExampleTests",
                        "ExamplesFromManual", "FloatTest", "HigherOrder",
                        "Nats", "SEBF", "Sum", "SortSpec", "Tree" ]
         },

@@ -4,8 +4,8 @@ Combining Testing and Verification
 This directory contains some examples demonstrating the
 combination of testing and verification.
 
-If there are is a property `p` in a program for which
-a proof exists, i.e., a file named `proof-p` (the name
+If there are is a property `p` in a program `m` for which
+a proof exists, i.e., a file named `proof-m-p` (the name
 is case independent), then:
 
 1. Property `p` is not checked by CurryCheck
@@ -31,7 +31,7 @@ To do so, we first formulate it as a property:
 
 To get some confidence in its general correctness, we test it:
 
-    > curry check ListProp
+    > curry-check ListProp
     ...
     Executing all tests...
     appendAddLengths_ON_BASETYPE (module ListProp, line 14):
@@ -46,17 +46,17 @@ functions into an Agda program:
     > curry2verify ListProp
     ...
     Agda module 'TO-PROVE-appendAddLengths.agda' written.
-    If you completed the proof, rename it to 'PROOF-appendAddLengths.agda'.
+    ...
 
 Now, we complete the Agda program `TO-PROVE-appendAddLengths.agda`
 by a straightforward induction on the first argument of `appendAddLengths`.
 
 Since the proof is complete, we rename the Agda module into
-`PROOF-appendAddLengths.agda`.
+`PROOF-ListProp-appendAddLengths.agda`.
 
 To see the effect of this proof for program testing, we run CurryCheck again:
 
-    > curry check ListProp
+    > curry-check ListProp
     Analyzing module 'ListProp'...
     >
 
@@ -65,7 +65,7 @@ Hence, CurryCheck does not perform any test since the property
 simplify the postcondition to `True` so that it trivially holds.
 This simplification process can be visualized with option `-v`:
 
-    > curry check ListProp -v
+    > curry-check ListProp -v2
     Analyzing module 'ListProp'...
     ...
     POSTCONDITION: append'post(a, b, c) → ==(+(length(a), length(b)), length(c))

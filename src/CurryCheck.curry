@@ -31,8 +31,8 @@ import AbstractCurry.Files
 import AbstractCurry.Select
 import AbstractCurry.Build
 import qualified AbstractCurry.Pretty as ACPretty
-import AbstractCurry.Transform ( renameCurryModule, trCTypeExpr
-                               , updCProg, updQNamesInCProg )
+import AbstractCurry.Transform ( renameCurryModule, trCTypeExpr, updCProg
+                               , updQNamesInCProg, updQNamesInCFuncDecl )
 import Analysis.Termination    ( Productivity(..) )
 import qualified FlatCurry.Types as FC
 import FlatCurry.Files
@@ -56,7 +56,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 16/10/2018)"
+                packageVersion ++ " of 30/10/2018)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -482,17 +482,17 @@ classifyTest opts prog test =
 
 -- Extracts all tests from a given Curry module and transforms
 -- all polymorphic tests into tests on a base type.
+-- The third argument contains the list of function representing
+-- proved properties. It is used to simplify post conditions to be tested.
 -- The result contains a tuple consisting of all actual tests,
 -- all ignored tests, the name of all operations with defined preconditions
 -- (needed to generate meaningful equivalence tests),
 -- and the public version of the original module.
-transformTests :: Options -> String -> CurryProg
+transformTests :: Options -> String -> [CFuncDecl] -> CurryProg
                -> IO ([CFuncDecl],[CFuncDecl],[QName],CurryProg)
-transformTests opts srcdir
+transformTests opts srcdir theofuncs
                prog@(CurryProg mname imps dfltdecl clsdecls instdecls
                                typeDecls functions opDecls) = do
-  theofuncs <- if optProof opts then getTheoremFunctions srcdir prog
-                                else return []
   simpfuncs <- simplifyPostConditionsWithTheorems (optVerb opts) theofuncs funcs
   let preCondOps  = preCondOperations simpfuncs
       postCondOps = map ((\ (mn,fn) -> (mn, fromPostCondName fn)) . funcName)
@@ -691,13 +691,13 @@ revertDetOpTrans detops fdecl@(CFunc qf@(mn,fn) ar vis texp _) =
 -- for f.
 genDetOpTests :: [String] -> [QName] -> [CFuncDecl] -> [CFuncDecl]
 genDetOpTests prooffiles prefuns fdecls =
-  map (genDetProp prefuns) (filter isDetOrgOp fdecls)
+  map (genDetProp prefuns) (filter (isDetOrgOp . funcName) fdecls)
  where
-  isDetOrgOp fdecl =
-   let fn = snd (funcName fdecl)
-    in "_ORGNDFUN" `isSuffixOf` fn &&
-       not (existsProofFor (determinismTheoremFor (take (length fn - 9) fn))
-                           prooffiles)
+  isDetOrgOp (mn,fn) =
+    "_ORGNDFUN" `isSuffixOf` fn &&
+    not (existsProofFor (mnorg, determinismTheoremFor (take (length fn - 9) fn))
+                        prooffiles)
+   where mnorg = take (length mn - 10) mn -- remove _PUBLICDET suffix
 
 -- Transforms a declaration of a deterministic operation f_ORGNDFUN
 -- into a determinisim property test of the form
@@ -707,14 +707,16 @@ genDetProp prefuns (CmtFunc _ qf ar vis texp rules) =
   genDetProp prefuns (CFunc qf ar vis texp rules)
 genDetProp prefuns (CFunc (mn,fn) ar _ (CQualType clscon texp) _) =
   CFunc (mn, forg ++ isDetSuffix) ar Public
-   (CQualType (addShowContext clscon) (propResultType texp))
+   (CQualType (foldr addEqShowContext (addShowContext clscon) rtypevars)
+              (propResultType texp))
    [simpleRule (map CPVar cvars) $
       addPreCond prefuns [(mn,forg)] cvars rnumcall ]
  where
-  forg     = take (length fn - 9) fn
-  cvars    = map (\i -> (i,"x"++show i)) [1 .. ar]
-  forgcall = applyF (mn,forg) (map CVar cvars)
-  rnumcall = applyF (easyCheckModule,"#<") [forgcall, cInt 2]
+  rtypevars = tvarsOfType (resultType texp)
+  forg      = take (length fn - 9) fn
+  cvars     = map (\i -> (i,"x"++show i)) [1 .. ar]
+  forgcall  = applyF (mn,forg) (map CVar cvars)
+  rnumcall  = applyF (easyCheckModule,"#<") [forgcall, cInt 2]
 
 -- Generates auxiliary (base-type instantiated) test functions for
 -- polymorphically typed test function.
@@ -792,10 +794,15 @@ defaultQualType (CQualType (CContext allclscon) ftype) =
   isTVar te = case te of CTVar _ -> True
                          _       -> False
 
--- Add a "Show" class context to all types occurring in the context.
+-- Adds a "Show" class context to all types occurring in the context.
 addShowContext :: CContext -> CContext
 addShowContext (CContext clscons) =
   CContext (nub (clscons ++ (map (\t -> (pre "Show",t)) (map snd clscons))))
+
+-- Adds `Eq` and `Show` class contexts for the given type variable.
+addEqShowContext :: CTVarIName -> CContext -> CContext
+addEqShowContext tvar (CContext clscons) =
+  CContext (nub (clscons ++ map (\c -> (pre c, CTVar tvar)) ["Eq","Show"]))
 
 -------------------------------------------------------------------------
 
@@ -871,9 +878,16 @@ analyseCurryProg opts modname orgprog = do
   let words      = map firstWord (lines progtxt)
       staticerrs = missingCPP ++ map (showOpError words) staticoperrs
   putStrIfDetails opts "Generating property tests...\n"
+  theofuncs <- if optProof opts then getTheoremFunctions srcdir prog
+                                else return []
+  -- compute already proved theorems for public module:
+  let pubmodname = modname++"_PUBLIC"
+      rnm2pub mn@(mod,n) | mod == modname = (pubmodname,n)
+                         | otherwise      = mn
+      theopubfuncs = map (updQNamesInCFuncDecl rnm2pub) theofuncs
   (rawTests,ignoredTests,preCondOps,pubmod) <-
-        transformTests opts srcdir . renameCurryModule (modname++"_PUBLIC")
-                                   . makeAllPublic $ prog
+        transformTests opts srcdir theopubfuncs
+          . renameCurryModule pubmodname . makeAllPublic $ prog
   let (rawDetTests,ignoredDetTests,pubdetmod) =
         transformDetTests opts prooffiles
               . renameCurryModule (modname++"_PUBLICDET")

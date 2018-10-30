@@ -9,18 +9,19 @@
 ---
 --- * A theorem is considered as proven and, thus, not be checked
 ---   by CurryCheck or the contract wrapper (see `currypp`), if there exists
----   a file named with prefix "Proof" and the name of the theorem, e.g.,
----   `Proof-sortPreservesLength.agda`. The name is not case sensitive,
----   the file name extension is arbitrary and the special characters in the
----   name are ignored. Hence, a proof for `sortlength` could be also stored in
----   a file named `PROOF_sort-perserves-length.smt`.
+---   a file named with prefix "Proof" and the qualified name of the theorem,
+---    e.g., `Proof-Sort-sortPreservesLength.agda`.
+---   The name is not case sensitive, the file name extension is arbitrary
+---   and the special characters in the name are ignored.
+---   Hence, a proof for `sortlength` could be also stored in
+---   a file named `PROOF_Sort_sort_preserves_length.smt`.
 ---
 ---  * A proof that some operation `f` is deterministic has the name
 ---    `fIsDeterministic` so that a proof for `last` can be stored in
 ---    `proof-last-is-deterministic.agda` (and also in some other files).
 ---
 --- @author Michael Hanus
---- @version October 2016
+--- @version October 2018
 ------------------------------------------------------------------------
 
 module TheoremUsage
@@ -56,20 +57,20 @@ getProofFiles dir = do
   return (filter isProofFileName files)
 
 --- Does the list of file names (second argument) contain a proof of the
---- theorem given as the first argument?
-existsProofFor :: String -> [String] -> Bool
-existsProofFor propname filenames =
-  any (isProofFileNameFor propname) filenames
+--- qualified theorem name given as the first argument?
+existsProofFor :: QName -> [String] -> Bool
+existsProofFor qpropname filenames =
+  any (isProofFileNameFor qpropname) filenames
 
 --- Is this a file name with a proof, i.e., start it with `proof`?
 isProofFileName :: String -> Bool
 isProofFileName fn = "proof" `isPrefixOf` (map toLower fn)
 
 --- Is this the file name of a proof of property `prop`?
-isProofFileNameFor :: String -> String -> Bool
-isProofFileNameFor prop fname =
+isProofFileNameFor :: QName -> String -> Bool
+isProofFileNameFor (mn,prop) fname =
   let lfname = map toLower (dropExtension fname)
-      lprop  = map toLower prop
+      lprop  = map toLower (mn ++ prop)
    in if "proof" `isPrefixOf` lfname
       then deleteNonAlphanNum (drop 5 lfname) == deleteNonAlphanNum lprop
       else False
@@ -86,7 +87,7 @@ getTheoremFunctions :: String -> CurryProg -> IO [CFuncDecl]
 getTheoremFunctions proofdir (CurryProg _ _ _ _ _ _ functions _) = do
   let propfuncs = filter isProperty functions -- all properties
   prooffiles <- getProofFiles proofdir
-  return $ filter (\fd -> existsProofFor (snd (funcName fd)) prooffiles)
+  return $ filter (\fd -> existsProofFor (funcName fd) prooffiles)
                   propfuncs
 
 ------------------------------------------------------------------------

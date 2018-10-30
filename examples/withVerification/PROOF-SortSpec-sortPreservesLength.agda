@@ -2,7 +2,7 @@
 
 open import bool
 
-module PROOF-sortPreservesLength
+module PROOF-SortSpec-sortPreservesLength
   (Choice : Set)
   (choose : Choice → 𝔹)
   (lchoice : Choice → Choice)
