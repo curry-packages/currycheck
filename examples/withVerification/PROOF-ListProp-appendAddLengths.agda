@@ -2,7 +2,7 @@
 
 open import bool
 
-module PROOF-appendAddLengths
+module PROOF-ListProp-appendAddLengths
   (Choice : Set)
   (choose : Choice → 𝔹)
   (lchoice : Choice → Choice)

@@ -1,4 +1,4 @@
-module Proof-last-is-deterministic where
+module Proof-DetOps-last-is-deterministic where
 
 -- Show that last is a deterministic operation.
 -- The property to show is:

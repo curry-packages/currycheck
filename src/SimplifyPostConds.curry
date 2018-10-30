@@ -31,7 +31,6 @@ import Rewriting.Substitution
 import Rewriting.Rules
 
 import ContractUsage
-import TheoremUsage
 
 -- Simplify the postconditions contained in the third argument w.r.t. a given
 -- list of theorems (second argument).
