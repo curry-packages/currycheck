@@ -37,22 +37,23 @@ import qualified FlatCurry.Types as FC
 import FlatCurry.Files
 import qualified FlatCurry.Goodies as FCG
 
-import CC.Config               ( packagePath, packageVersion )
+import CC.Config         ( packagePath, packageVersion )
 import CC.Options
-import CheckDetUsage           ( checkDetUse, containsDetOperations)
+import CheckDetUsage     ( checkDetUse, containsDetOperations)
 import ContractUsage
-import DefaultRuleUsage        ( checkDefaultRules, containsDefaultRules )
+import DefaultRuleUsage  ( checkDefaultRules, containsDefaultRules )
 import PropertyUsage
-import SimplifyPostConds       ( simplifyPostConditionsWithTheorems )
-import TheoremUsage
-import UsageCheck              ( checkBlacklistUse, checkSetUse )
+import SimplifyPostConds ( simplifyPostConditionsWithTheorems )
+import TheoremUsage      ( determinismTheoremFor, existsProofFor
+                         , getModuleProofFiles, getTheoremFunctions )
+import UsageCheck        ( checkBlacklistUse, checkSetUse )
 
 -- Banner of this tool:
 ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 30/10/2018)"
+                packageVersion ++ " of 31/10/2018)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -661,7 +662,9 @@ analyseCurryProg opts modname orgprog = do
         maybe (error $ "Source file of module '"++modname++"' not found!") id
   let srcdir = takeDirectory srcfilename
   putStrLnIfDebug opts $ "Source file: " ++ srcfilename
-  prooffiles <- if optProof opts then getProofFiles srcdir else return []
+  prooffiles <- if optProof opts
+                  then getModuleProofFiles srcdir modname
+                  else return []
   unless (null prooffiles) $ putStrIfDetails opts $
     unlines ("Proof files found:" : map ("- " ++) prooffiles)
   progtxt <- readFile srcfilename
