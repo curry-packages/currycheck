@@ -26,7 +26,7 @@
 
 module TheoremUsage
   ( determinismTheoremFor
-  , getProofFiles, existsProofFor, isProofFileName, isProofFileNameFor
+  , getModuleProofFiles, existsProofFor, isProofFileNameFor
   , getTheoremFunctions
   )  where
 
@@ -50,11 +50,11 @@ determinismTheoremFor funcname = funcname ++ "isdeterministic"
 -- Operations for proof files:
 
 --- Get the names of all files in the directory (first argument) containing
---- proofs of theorems.
-getProofFiles :: String -> IO [String]
-getProofFiles dir = do
+--- proofs of theorems of the module (second argument).
+getModuleProofFiles :: String -> String -> IO [String]
+getModuleProofFiles dir mod = do
   files <- getDirectoryContents dir
-  return (filter isProofFileName files)
+  return (filter (isModuleProofFileName mod) files)
 
 --- Does the list of file names (second argument) contain a proof of the
 --- qualified theorem name given as the first argument?
@@ -62,9 +62,12 @@ existsProofFor :: QName -> [String] -> Bool
 existsProofFor qpropname filenames =
   any (isProofFileNameFor qpropname) filenames
 
---- Is this a file name with a proof, i.e., start it with `proof`?
-isProofFileName :: String -> Bool
-isProofFileName fn = "proof" `isPrefixOf` (map toLower fn)
+--- Is the second argument a file name with a proof of some theorem of a module
+--- (first argument), i.e., start it with `proof` and the module name?
+isModuleProofFileName :: String -> String -> Bool
+isModuleProofFileName mn fn =
+  deleteNonAlphanNum ("proof" ++ map toLower mn)
+    `isPrefixOf` deleteNonAlphanNum (map toLower fn)
 
 --- Is this the file name of a proof of property `prop`?
 isProofFileNameFor :: QName -> String -> Bool
@@ -84,9 +87,9 @@ deleteNonAlphanNum = filter isAlphaNum
 --- A theorem is a property for which a proof file exists in the
 --- directory provided as first argument.
 getTheoremFunctions :: String -> CurryProg -> IO [CFuncDecl]
-getTheoremFunctions proofdir (CurryProg _ _ _ _ _ _ functions _) = do
+getTheoremFunctions proofdir (CurryProg mn _ _ _ _ _ functions _) = do
   let propfuncs = filter isProperty functions -- all properties
-  prooffiles <- getProofFiles proofdir
+  prooffiles <- getModuleProofFiles proofdir mn
   return $ filter (\fd -> existsProofFor (funcName fd) prooffiles)
                   propfuncs
 
