@@ -4,9 +4,10 @@ Combining Testing and Verification
 This directory contains some examples demonstrating the
 combination of testing and verification.
 
-If there are is a property `p` in a program `m` for which
-a proof exists, i.e., a file named `proof-m-p` (the name
-is case independent), then:
+If there is a property `p` in a module `M` for which
+a proof exists, i.e., a file named `proof-M-p.abc` (the name
+is case independent and the suffix and all non-alpha-numberic characters
+in the file name are ignored), then:
 
 1. Property `p` is not checked by CurryCheck
 

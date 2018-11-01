@@ -14,7 +14,7 @@
 ---   (together with possible preconditions).
 ---
 --- @author Michael Hanus, Jan-Patrick Baye
---- @version October 2018
+--- @version November 2018
 -------------------------------------------------------------------------
 
 import AnsiCodes
@@ -483,15 +483,17 @@ classifyTest opts prog test =
 
 -- Extracts all tests from a given Curry module and transforms
 -- all polymorphic tests into tests on a base type.
+-- The second argument contains the names of existing proof files.
+-- It is used to ignore tests when the properties are already proved.
 -- The third argument contains the list of function representing
 -- proved properties. It is used to simplify post conditions to be tested.
 -- The result contains a tuple consisting of all actual tests,
 -- all ignored tests, the name of all operations with defined preconditions
 -- (needed to generate meaningful equivalence tests),
 -- and the public version of the original module.
-transformTests :: Options -> String -> [CFuncDecl] -> CurryProg
+transformTests :: Options -> [String] -> [CFuncDecl] -> CurryProg
                -> IO ([CFuncDecl],[CFuncDecl],[QName],CurryProg)
-transformTests opts srcdir theofuncs
+transformTests opts prfnames theofuncs
                prog@(CurryProg mname imps dfltdecl clsdecls instdecls
                                typeDecls functions opDecls) = do
   simpfuncs <- simplifyPostConditionsWithTheorems (optVerb opts) theofuncs funcs
@@ -501,9 +503,10 @@ transformTests opts srcdir theofuncs
       specOps     = map ((\ (mn,fn) -> (mn, fromSpecName fn)) . funcName)
                         (funDeclsWith isSpecName simpfuncs)
       -- generate post condition tests:
-      postCondTests = concatMap (genPostCondTest preCondOps postCondOps) funcs
+      postCondTests =
+        concatMap (genPostCondTest preCondOps postCondOps prfnames) funcs
       -- generate specification tests:
-      specOpTests   = concatMap (genSpecTest opts preCondOps specOps) funcs
+      specOpTests   = concatMap (genSpecTest opts preCondOps specOps prfnames) funcs
       grSpecOpTests = if optEquiv opts == Ground then specOpTests else []
 
       (realtests,ignoredtests) = partition fst $
@@ -511,7 +514,8 @@ transformTests opts srcdir theofuncs
         then []
         else concatMap (poly2default opts) $
                -- ignore already proved properties:
-               filter (\fd -> funcName fd `notElem` map funcName theofuncs)
+               filter (\fd -> not (existsProofFor (orgQName (funcName fd))
+                                                  prfnames))
                       usertests ++
                (if optSpec opts then grSpecOpTests ++ postCondTests else [])
   return (map snd realtests ++
@@ -603,19 +607,23 @@ propResultType te = case te of
 
 -- Transforms a function declaration into a post condition test if
 -- there is a post condition for this function (i.e., a relation named
--- f'post). The post condition test is of the form
--- fSatisfiesPostCondition x1...xn y = always (f'post x1...xn (f x1...xn))
-genPostCondTest :: [QName] -> [QName] -> CFuncDecl -> [CFuncDecl]
-genPostCondTest prefuns postops (CmtFunc _ qf ar vis texp rules) =
-  genPostCondTest prefuns postops (CFunc qf ar vis texp rules)
-genPostCondTest prefuns postops
+-- f'post) and there is no proof file for this post condition.
+-- The generated post condition test is of the form
+--     fSatisfiesPostCondition x1...xn y = always (f'post x1...xn (f x1...xn))
+genPostCondTest :: [QName] -> [QName] -> [String] -> CFuncDecl -> [CFuncDecl]
+genPostCondTest prefuns postops prooffnames (CmtFunc _ qf ar vis texp rules) =
+  genPostCondTest prefuns postops prooffnames (CFunc qf ar vis texp rules)
+genPostCondTest prefuns postops prooffnames
                 (CFunc qf@(mn,fn) _ _ (CQualType clscon texp) _) =
- if qf `notElem` postops then [] else
-  [CFunc (mn, fn ++ postCondSuffix) ar Public
+ if qf `notElem` postops || existsProofFor (orgQName postname) prooffnames
+   then []
+   else
+  [CFunc postname ar Public
     (CQualType clscon (propResultType texp))
     [simpleRule (map CPVar cvars) $
        addPreCond prefuns [qf] cvars postprop ]]
  where
+  postname = (mn, fn ++ postCondSuffix) -- name of generated post cond. test
   ar       = arityOfType texp
   cvars    = map (\i -> (i,"x"++show i)) [1 .. ar]
   rcall    = applyF qf (map CVar cvars)
@@ -627,20 +635,23 @@ genPostCondTest prefuns postops
 -- there is a specification for this function (i.e., an operation named
 -- f'spec). The generated specification test has the form
 --     fSatisfiesSpecification = f <=> f'spec
-genSpecTest :: Options -> [QName] -> [QName] -> CFuncDecl -> [CFuncDecl]
-genSpecTest opts prefuns specops (CmtFunc _ qf ar vis texp rules) =
-  genSpecTest opts prefuns specops (CFunc qf ar vis texp rules)
-genSpecTest opts prefuns specops
+genSpecTest :: Options -> [QName] -> [QName] -> [String] -> CFuncDecl
+            -> [CFuncDecl]
+genSpecTest opts prefuns specops prooffnames (CmtFunc _ qf ar vis texp rules) =
+  genSpecTest opts prefuns specops prooffnames (CFunc qf ar vis texp rules)
+genSpecTest opts prefuns specops prooffnames
             (CFunc qf@(mn,fn) _ _ (CQualType clscon texp) _)
- | qf `notElem` specops
+ | qf `notElem` specops || existsProofFor (orgQName sptname) prooffnames
  = []
  | optEquiv opts == Ground
  = [genSpecGroundEquivTest prefuns qf clscon texp]
  | otherwise
- = [CFunc (mn, fn ++ satSpecSuffix) 0 Public
+ = [CFunc sptname 0 Public
           (emptyClassType (propResultType unitType))
           [simpleRule [] (applyF (easyCheckModule,"<=>")
                                  [constF qf, constF (mn,toSpecName fn)])]]
+ where
+  sptname = (mn, fn ++ satSpecSuffix) -- name of generated specification test
 
 -- Transforms a function declaration into a ground equivalence test
 -- against the specification (i.e., an operation named `f'spec` exists).
@@ -821,6 +832,20 @@ orgTestName (mn,tname)
   = orgTestName (mn, stripSuffix tname satSpecSuffix)
   | otherwise = (mn,tname)
 
+-- Transforms a possibly changed qualified name, e.g., `("Mod_PUBLIC","f")`
+-- or `("Mod_PUBLICDET","f")`, back to its original name by removing the
+-- module suffix.
+orgQName :: QName -> QName
+orgQName (mn,fn)
+  | publicSuffix `isSuffixOf` mn
+  = (stripSuffix mn publicSuffix, fn)
+  | publicdetSuffix `isSuffixOf` mn
+  = (stripSuffix mn publicdetSuffix, fn)
+  | otherwise = (mn,fn)
+ where
+  publicSuffix    = "_PUBLIC"
+  publicdetSuffix = "_PUBLICDET"
+
 -- This function implements the first phase of CurryCheck: it analyses
 -- a module to be checked, i.e., it finds the tests, creates new tests
 -- (e.g., for polymorphic properties, deterministic functions, post
@@ -889,7 +914,7 @@ analyseCurryProg opts modname orgprog = do
                          | otherwise      = mn
       theopubfuncs = map (updQNamesInCFuncDecl rnm2pub) theofuncs
   (rawTests,ignoredTests,preCondOps,pubmod) <-
-        transformTests opts srcdir theopubfuncs
+        transformTests opts prooffiles theopubfuncs
           . renameCurryModule pubmodname . makeAllPublic $ prog
   let (rawDetTests,ignoredDetTests,pubdetmod) =
         transformDetTests opts prooffiles
