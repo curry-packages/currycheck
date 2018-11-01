@@ -50,13 +50,6 @@ determinismTheoremFor funcname = funcname ++ "isdeterministic"
 -- Operations for proof files:
 
 --- Get the names of all files in the directory (first argument) containing
---- proofs of theorems.
-getProofFiles :: String -> IO [String]
-getProofFiles dir = do
-  files <- getDirectoryContents dir
-  return (filter isProofFileName files)
-
---- Get the names of all files in the directory (first argument) containing
 --- proofs of theorems of the module (second argument).
 getModuleProofFiles :: String -> String -> IO [String]
 getModuleProofFiles dir mod = do
@@ -68,10 +61,6 @@ getModuleProofFiles dir mod = do
 existsProofFor :: QName -> [String] -> Bool
 existsProofFor qpropname filenames =
   any (isProofFileNameFor qpropname) filenames
-
---- Is this a file name with a proof, i.e., start it with `proof`?
-isProofFileName :: String -> Bool
-isProofFileName fn = "proof" `isPrefixOf` (map toLower fn)
 
 --- Is the second argument a file name with a proof of some theorem of a module
 --- (first argument), i.e., start it with `proof` and the module name?
