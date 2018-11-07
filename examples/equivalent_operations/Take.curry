@@ -1,5 +1,9 @@
 --- Example to show the non-equivalence of two versions of the
---- `take` operation.
+--- `take` operation, taken from
+---
+--- Foner, K. and Zhang, H. and Lampropoulos, L.: {Keep Your Laziness in Check
+--- ICFP 2018,
+--- DOI: 10.1145/3236797
 
 import Test.Prop
 
