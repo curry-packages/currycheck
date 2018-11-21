@@ -682,9 +682,7 @@ to restrict the test cases via the condition operater \ccode{==>}):
 
 \begin{curry}
 sortSatisfiesPostCondition :: [Int] -> Prop
-sortSatisfiesPostCondition x =
-  let r = sort x
-  in (r == r) ==> always (sort'post x r)
+sortSatisfiesPostCondition x = always (sort'post x (sort x))
 
 sortSatisfiesSpecification :: Prop
 sortSatisfiesSpecification = sort <=> sort'spec

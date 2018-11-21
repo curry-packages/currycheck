@@ -18,16 +18,17 @@
 -------------------------------------------------------------------------
 
 import AnsiCodes
-import Char                    ( toUpper )
-import Distribution
-import FilePath                ( (</>), pathSeparator, takeDirectory )
+import Char            ( toUpper )
+import Distribution    ( curryCompiler, installDir, modNameToPath
+                       , lookupModuleSourceInLoadPath, stripCurrySuffix )
+import FilePath        ( (</>), pathSeparator, takeDirectory )
 import GetOpt
 import List
-import Maybe                   ( fromJust, isJust )
-import System                  ( system, exitWith, getArgs, getPID, getEnviron )
+import Maybe           ( fromJust, isJust )
+import System          ( system, exitWith, getArgs, getPID, getEnviron )
 
 import AbstractCurry.Types
-import AbstractCurry.Files
+import AbstractCurry.Files     ( readCurryWithParseOptions, readUntypedCurry )
 import AbstractCurry.Select
 import AbstractCurry.Build
 import qualified AbstractCurry.Pretty as ACPretty
@@ -38,6 +39,7 @@ import qualified FlatCurry.Types as FC
 import FlatCurry.Files
 import qualified FlatCurry.Goodies as FCG
 import Text.Pretty             ( pPrint )
+import System.FrontendExec     ( defaultParams, setQuiet )
 
 import CC.AnalysisHelpers ( getTerminationInfos, getProductivityInfos
                           , getUnsafeModuleInfos, dropPublicSuffix )
