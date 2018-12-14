@@ -14,13 +14,12 @@
 ---   (together with possible preconditions).
 ---
 --- @author Michael Hanus, Jan-Patrick Baye
---- @version November 2018
+--- @version December 2018
 -------------------------------------------------------------------------
 
 import AnsiCodes
 import Char            ( toUpper )
-import Distribution    ( curryCompiler, installDir, modNameToPath
-                       , lookupModuleSourceInLoadPath, stripCurrySuffix )
+import Distribution    ( curryCompiler, installDir )
 import FilePath        ( (</>), pathSeparator, takeDirectory )
 import GetOpt
 import List
@@ -38,8 +37,10 @@ import Analysis.Termination    ( Productivity(..) )
 import qualified FlatCurry.Types as FC
 import FlatCurry.Files
 import qualified FlatCurry.Goodies as FCG
-import Text.Pretty             ( pPrint )
-import System.FrontendExec     ( defaultParams, setQuiet )
+import System.CurryPath    ( modNameToPath, lookupModuleSourceInLoadPath
+                           , stripCurrySuffix )
+import System.FrontendExec ( defaultParams, setQuiet )
+import Text.Pretty         ( pPrint )
 
 import CC.AnalysisHelpers ( getTerminationInfos, getProductivityInfos
                           , getUnsafeModuleInfos, dropPublicSuffix )

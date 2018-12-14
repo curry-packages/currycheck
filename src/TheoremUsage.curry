@@ -21,7 +21,7 @@
 ---    `proof-last-is-deterministic.agda` (and also in some other files).
 ---
 --- @author Michael Hanus
---- @version October 2018
+--- @version December 2018
 ------------------------------------------------------------------------
 
 module TheoremUsage
@@ -34,9 +34,10 @@ import AbstractCurry.Types
 import AbstractCurry.Select
 import Char
 import Directory
-import Distribution         (lookupModuleSourceInLoadPath, modNameToPath)
-import FilePath             (dropExtension, takeDirectory)
+import FilePath             ( dropExtension, takeDirectory )
 import List
+
+import System.CurryPath     ( lookupModuleSourceInLoadPath, modNameToPath )
 
 import PropertyUsage
 
