@@ -17,7 +17,6 @@
 --- @version December 2018
 -------------------------------------------------------------------------
 
-import AnsiCodes
 import Char            ( toUpper )
 import Distribution    ( curryCompiler, installDir )
 import FilePath        ( (</>), pathSeparator, takeDirectory )
@@ -37,6 +36,7 @@ import Analysis.Termination    ( Productivity(..) )
 import qualified FlatCurry.Types as FC
 import FlatCurry.Files
 import qualified FlatCurry.Goodies as FCG
+import System.Console.ANSI.Codes
 import System.CurryPath    ( modNameToPath, lookupModuleSourceInLoadPath
                            , stripCurrySuffix )
 import System.FrontendExec ( defaultParams, setQuiet )

@@ -7,7 +7,6 @@ module CC.AnalysisHelpers
   , dropPublicSuffix )
  where
 
-import AnsiCodes            ( blue )
 import List                 ( intercalate, isSuffixOf )
 
 import AbstractCurry.Types   ( QName )
@@ -18,6 +17,7 @@ import Analysis.Termination  ( Productivity(..), productivityAnalysis
                              , terminationAnalysis )
 import Analysis.UnsafeModule ( unsafeModuleAnalysis )
 import CASS.Server           ( analyzeGeneric )
+import System.Console.ANSI.Codes ( blue )
 
 import CC.Options
 
