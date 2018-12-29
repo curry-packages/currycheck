@@ -151,7 +151,7 @@ putStrIfDetails opts s = when (optVerb opts > 1) (putStr s >> hFlush stdout)
 putStrLnIfDebug :: Options -> String -> IO ()
 putStrLnIfDebug opts s = when (optVerb opts > 3) (putStrLn s >> hFlush stdout)
 
---- use some coloring (from library AnsiCodes) if color option is on:
+--- use some coloring (from System.Console.ANSI.Codes) if color option is on:
 withColor :: Options -> (String -> String) -> String -> String
 withColor opts coloring = if optColor opts then coloring else id
 

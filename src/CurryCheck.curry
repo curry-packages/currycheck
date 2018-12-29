@@ -1363,8 +1363,8 @@ genMainTestModule opts mainmod orgtestmods = do
   let mainFunction = genMainFunction opts mainmod testfuncs
       imports      = nub $ [ easyCheckModule, easyCheckExecModule
                            , searchTreeModule, generatorModule
-                           , "List", "AnsiCodes", "Char", "Maybe", "System"
-                           , "Profile" ] ++
+                           , "List", "Char", "Maybe", "System", "Profile"
+                           ] ++ -- TODO: import also System.Console.ANSI.Codes
                            map (fst . fst) testtypes ++
                            map testModuleName testmods
   appendix <- readFile (packagePath </> "include" </> "TestAppendix.curry")

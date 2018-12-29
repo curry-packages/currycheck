@@ -13,7 +13,7 @@ runPropertyTests withcolor withtime props = do
                 >>= return . Maybe.catMaybes
   if null failedmsgs
    then return 0
-   else do putStrLn $ (if withcolor then AnsiCodes.red else id) $
+   else do putStrLn $ ({- if withcolor then AnsiCodes.red else -} id) $
                       line ++
                       "\nFAILURES OCCURRED IN SOME TESTS:\n" ++
                       unlines failedmsgs ++ line
