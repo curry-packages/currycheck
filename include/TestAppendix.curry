@@ -13,11 +13,11 @@ runPropertyTests withcolor withtime props = do
                 >>= return . Maybe.catMaybes
   if null failedmsgs
    then return 0
-   else do putStrLn $ ({- if withcolor then AnsiCodes.red else -} id) $
-                      line ++
-                      "\nFAILURES OCCURRED IN SOME TESTS:\n" ++
-                      unlines failedmsgs ++ line
-           return 1
+   else do
+     putStrLn $ (if withcolor then System.Console.ANSI.Codes.red else id) $
+                   line ++ "\nFAILURES OCCURRED IN SOME TESTS:\n" ++
+                   unlines failedmsgs ++ line
+     return 1
  where
    line = take 78 (repeat '=')
 
@@ -49,17 +49,19 @@ instance (Show a, Show b) => Show (Func a b) where
 --- Generates a search tree for functions represented by non-empty(!)
 --- pair list values where the search trees for the arguments and results
 --- are given as a parameter.
-genFunc :: SearchTree.SearchTree a -> SearchTree.SearchTree b
-        -> SearchTree.SearchTree (Func a b)
+genFunc :: Control.SearchTree.SearchTree a -> Control.SearchTree.SearchTree b
+        -> Control.SearchTree.SearchTree (Func a b)
 genFunc gena genb =
-  SearchTreeGenerators.genCons1 Func
-    (genNEList (SearchTreeGenerators.genPair gena genb))
+  Control.SearchTree.Generators.genCons1 Func
+    (genNEList (Control.SearchTree.Generators.genPair gena genb))
 
 -- Generates a search tree for non-empty list values where the search tree
 -- for the elements is given as a parameter.
-genNEList :: SearchTree.SearchTree a -> SearchTree.SearchTree [a]
+genNEList :: Control.SearchTree.SearchTree a
+          -> Control.SearchTree.SearchTree [a]
 genNEList genx =
-  SearchTreeGenerators.genCons2 (:) genx (SearchTreeGenerators.genList genx)
+  Control.SearchTree.Generators.genCons2 (:) genx
+   (Control.SearchTree.Generators.genList genx)
 
 --- Transforms a function in list presentation into a real function.
 list2Func :: Eq a => Func a b -> (a -> b)
@@ -71,11 +73,12 @@ list2Func (Func abs) x = maybe (if null abs then failed else snd (head abs))
 --- Generates a search tree for functions represented by non-empty(!)
 --- pair list values where the search trees for the arguments and results
 --- are given as a parameter.
-genFunction :: Eq a => SearchTree.SearchTree a -> SearchTree.SearchTree b
-                    -> SearchTree.SearchTree (a -> b)
+genFunction :: Eq a => Control.SearchTree.SearchTree a
+                    -> Control.SearchTree.SearchTree b
+                    -> Control.SearchTree.SearchTree (a -> b)
 genFunction gena genb =
-  SearchTreeGenerators.genCons1 l2f
-    (genNEList (SearchTreeGenerators.genPair gena genb))
+  Control.SearchTree.Generators.genCons1 l2f
+    (genNEList (Control.SearchTree.Generators.genPair gena genb))
  where
   l2f abs x = maybe (if null abs then failed else snd (head abs))
                     id

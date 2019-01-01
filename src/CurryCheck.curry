@@ -23,7 +23,7 @@ import FilePath        ( (</>), pathSeparator, takeDirectory )
 import GetOpt
 import List
 import Maybe           ( fromJust, isJust )
-import System          ( system, exitWith, getArgs, getPID, getEnviron )
+import System          ( system, exitWith, getArgs, getPID, setEnviron )
 
 import AbstractCurry.Types
 import AbstractCurry.Files     ( readCurryWithParseOptions, readUntypedCurry )
@@ -45,6 +45,7 @@ import Text.Pretty         ( pPrint )
 import CC.AnalysisHelpers ( getTerminationInfos, getProductivityInfos
                           , getUnsafeModuleInfos, dropPublicSuffix )
 import CC.Config          ( packagePath, packageVersion )
+import CC.Helpers         ( ccLoadPath )
 import CC.Options
 import CheckDetUsage      ( checkDetUse, containsDetOperations)
 import ContractUsage
@@ -60,7 +61,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 31/10/2018)"
+                packageVersion ++ " of 30/12/2018)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -1364,7 +1365,7 @@ genMainTestModule opts mainmod orgtestmods = do
       imports      = nub $ [ easyCheckModule, easyCheckExecModule
                            , searchTreeModule, generatorModule
                            , "List", "Char", "Maybe", "System", "Profile"
-                           ] ++ -- TODO: import also System.Console.ANSI.Codes
+                           , "System.Console.ANSI.Codes" ] ++
                            map (fst . fst) testtypes ++
                            map testModuleName testmods
   appendix <- readFile (packagePath </> "include" </> "TestAppendix.curry")
@@ -1591,6 +1592,9 @@ main = do
   when (null args || optHelp opts) (putStrLn usageText >> exitWith 1)
   let mods = map stripCurrySuffix args
   mapIO_ checkModuleName mods
+  currypath  <- ccLoadPath
+  --putStrLn $ "export CURRYPATH=" ++ currypath
+  setEnviron "CURRYPATH" currypath
   testModules <- mapIO (analyseModule opts) mods
   let staticerrs       = concatMap staticErrors (concat testModules)
       finaltestmodules = filter testThisModule (concat testModules)
@@ -1609,9 +1613,6 @@ main = do
     finaltests <- genMainTestModule opts testmodname finaltestmodules
     showGeneratedModule opts "main test" testmodname
     putStrIfNormal opts $ withColor opts blue $ "and compiling it...\n"
-    ecurrypath <- getEnviron "CURRYPATH"
-    let currypath = case ecurrypath of ':':_ -> '.':ecurrypath
-                                       _     -> ecurrypath
     let runcmd = unwords $
                    [ installDir </> "bin" </> "curry"
                    , "--noreadline"
@@ -1679,7 +1680,7 @@ arityOfType = length . argTypes
 
 --- Name of the SearchTree module.
 searchTreeModule :: String
-searchTreeModule = "SearchTree"
+searchTreeModule = "Control.SearchTree"
 
 --- Name of SearchTree type constructor.
 searchTreeTC :: QName
@@ -1687,7 +1688,7 @@ searchTreeTC = (searchTreeModule,"SearchTree")
 
 --- Name of the SearchTreeGenerator module.
 generatorModule :: String
-generatorModule = "SearchTreeGenerators"
+generatorModule = "Control.SearchTree.Generators"
 
 choiceGen :: QName
 choiceGen = (generatorModule,"|||")

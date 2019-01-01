@@ -2,7 +2,7 @@
 -- Here are some examples for problems to be detected by CurryCheck
 ---------------------------------------------------------------------------
 
-import SetFunctions
+import Control.SetFunctions
 
 ---------------------------------------------------------------------------
 -- Detection of unintended uses of set functions and functional pattern unif.

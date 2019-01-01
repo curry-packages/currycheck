@@ -60,5 +60,5 @@ easyCheckModule = "Test.EasyCheck"
 
 --- Name of the EasyCheckExec module.
 easyCheckExecModule :: String
-easyCheckExecModule = "Test.EasyCheckExec" 
+easyCheckExecModule = "Test.EasyCheck.Exec" 
 

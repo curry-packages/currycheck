@@ -8,18 +8,20 @@
 --- See example program `Examples/UsageErrors.curry` for some examples.
 ---
 --- @author Michael Hanus
---- @version October 2016
+--- @version December 2018
 ---------------------------------------------------------------------------
 
 module UsageCheck(checkSetUse, checkBlacklistUse) where
 
+import Char(isDigit)
+import Read(readNat)
+
 import qualified AbstractCurry.Types as AC
 import AbstractCurryMatch
-import Char(isDigit)
 import FlatCurry.Types
 import FlatCurryMatch
-import Read(readNat)
-import SetFunctions
+
+import Control.SetFunctions
 
 ---------------------------------------------------------------------
 --- Returns messages about unintended uses of set functions in a
@@ -41,8 +43,10 @@ checkSetUse (Prog _ _ _ fdecls _) = do
 --- To provide a simple implementation, we exploit functional patterns
 --- with the function `funWithinExp`.
 setUse :: [FuncDecl] -> (QName, String)
---setUse (_ ++ [funWithExp qf (Comb ct ("SetFunctions","set"++n) args)] ++ _)
-setUse (_++ [funWithinExp qf _ _ (Comb ct ("SetFunctions","set"++n) args)] ++_)
+--setUse (_ ++ [funWithExp qf (Comb ct ("Control.SetFunctions","set"++n) args)] ++ _)
+setUse (_ ++
+        [funWithinExp qf _ _ (Comb ct ("Control.SetFunctions","set"++n) args)]
+        ++ _)
   | not (validSetFunCall ct n args) = (qf,n)
 
 --- Checks whether an application of a set function is as intended.

@@ -1,6 +1,6 @@
 -- Add numbers and define a specific generator for non-negative integers
 
-import SearchTreeGenerators
+import Control.SearchTree.Generators
 import Test.Prop
 
 sumUp n = if n==0 then 0 else n + sumUp (n-1)
