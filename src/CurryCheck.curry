@@ -607,7 +607,7 @@ funDeclsWith pred = filter (pred . snd . funcName)
 propResultType :: CTypeExpr -> CTypeExpr
 propResultType te = case te of
   CFuncType from to -> CFuncType from (propResultType to)
-  _                 -> baseType (easyCheckModule,"Prop")
+  _                 -> baseType (propTypesModule,"Prop")
 
 -- Transforms a function declaration into a post condition test if
 -- there is a post condition for this function (i.e., a relation named

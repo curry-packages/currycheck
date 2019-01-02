@@ -3,12 +3,12 @@
 --- a Curry program.
 ---
 --- @author Michael Hanus
---- @version December 2017
+--- @version January 2019
 ------------------------------------------------------------------------
 
 module PropertyUsage
   ( isProperty, isPropType, isPropIOType, isEquivProperty
-  , propModule, easyCheckModule, easyCheckExecModule
+  , propModule, propTypesModule, easyCheckModule, easyCheckExecModule
   )  where
 
 import AbstractCurry.Types
@@ -25,13 +25,13 @@ isProperty = isPropertyType . typeOfQualType . funcType
 --- Is the type expression the type Test.EasyCheck.Prop?
 isPropType :: CTypeExpr -> Bool
 isPropType texp = case texp of
-  CTCons (mn,tc) -> tc == "Prop" && isCheckModule mn
+  CTCons (mn,tc) -> tc == "Prop" && mn == propTypesModule
   _              -> False
 
 --- Is the type expression the type Test.EasyCheck.PropIO?
 isPropIOType :: CTypeExpr -> Bool
 isPropIOType texp = case texp of
-  CTCons (mn,tc) -> tc == "PropIO" && isCheckModule mn
+  CTCons (mn,tc) -> tc == "PropIO" && mn == propTypesModule
   _              -> False
 
 --- Check whether a function definition is an equivalence property, i.e.,
@@ -53,6 +53,10 @@ isCheckModule mn = mn == propModule || mn == easyCheckModule
 --- Name of the Test.Prop module (the clone of the EasyCheck module).
 propModule :: String
 propModule = "Test.Prop" 
+
+--- Name of the Test.Prop.Types module (containing property type definitions).
+propTypesModule :: String
+propTypesModule = "Test.Prop.Types"
 
 --- Name of the EasyCheck module.
 easyCheckModule :: String
