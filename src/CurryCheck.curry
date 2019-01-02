@@ -14,7 +14,7 @@
 ---   (together with possible preconditions).
 ---
 --- @author Michael Hanus, Jan-Patrick Baye
---- @version December 2018
+--- @version January 2019
 -------------------------------------------------------------------------
 
 import Char            ( toUpper )
@@ -61,7 +61,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 30/12/2018)"
+                packageVersion ++ " of 02/01/2019)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
