@@ -1,4 +1,4 @@
-import Test.EasyCheck
+import Test.Prop
 
 revrev :: [a] -> [a]
 revrev xs = reverse (reverse xs)
