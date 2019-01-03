@@ -14,6 +14,7 @@
         "easycheck"     : ">= 0.0.1",
         "flatcurry"     : ">= 2.0.0",
         "frontend-exec" : ">= 0.0.1",
+        "peano"         : ">= 1.0.0",
         "rewriting"     : ">= 2.0.0",
         "setfunctions"  : ">= 0.0.1",
         "wl-pprint"     : ">= 0.0.1"

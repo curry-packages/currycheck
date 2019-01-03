@@ -1,6 +1,6 @@
 -- Testing the equivalence of non-terminating operations:
 
-import Nat
+import Data.Nat
 import Test.Prop
 
 -- Two different infinite lists:
