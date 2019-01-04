@@ -24,9 +24,11 @@ runPropertyTests withcolor withtime props = do
 --- Prints the run time needed to execute a given IO action.
 showRunTimeFor :: IO a -> IO a
 showRunTimeFor action = do
-  t0 <- Profile.getProcessInfos >>= return . maybe 0 id . lookup Profile.RunTime
+  t0 <- Debug.Profile.getProcessInfos
+          >>= return . maybe 0 id . lookup Debug.Profile.RunTime
   result <- action
-  t1 <- Profile.getProcessInfos >>= return . maybe 0 id . lookup Profile.RunTime
+  t1 <- Debug.Profile.getProcessInfos
+          >>= return . maybe 0 id . lookup Debug.Profile.RunTime
   putStrLn $ "Run time: " ++ show (t1-t0) ++ " msec."
   return result
 

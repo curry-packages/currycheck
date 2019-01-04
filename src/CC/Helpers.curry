@@ -32,4 +32,5 @@ ccExecLoadPath =
  where
   isRequiredPackage dir =
     any (`isInfixOf` dir)
-        ["ansi-terminal", "easycheck", "random", "searchtree", "setfunctions"]
+        [ "ansi-terminal", "easycheck", "profiling", "random"
+        , "searchtree", "setfunctions" ]

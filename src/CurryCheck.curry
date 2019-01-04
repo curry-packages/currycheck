@@ -1364,7 +1364,7 @@ genMainTestModule opts mainmod orgtestmods = do
   let mainFunction = genMainFunction opts mainmod testfuncs
       imports      = nub $ [ easyCheckModule, easyCheckExecModule
                            , searchTreeModule, generatorModule
-                           , "List", "Char", "Maybe", "System", "Profile"
+                           , "List", "Char", "Maybe", "System", "Debug.Profile"
                            , "System.Console.ANSI.Codes" ] ++
                            map (fst . fst) testtypes ++
                            map testModuleName testmods
