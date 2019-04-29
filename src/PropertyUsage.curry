@@ -3,7 +3,7 @@
 --- a Curry program.
 ---
 --- @author Michael Hanus
---- @version January 2019
+--- @version April 2019
 ------------------------------------------------------------------------
 
 module PropertyUsage
@@ -12,7 +12,8 @@ module PropertyUsage
   )  where
 
 import AbstractCurry.Types
-import AbstractCurry.Select (funcType, resultType, typeOfQualType, funcRules)
+import AbstractCurry.Select ( funcName, funcRules, funcType, resultType
+                            , typeOfQualType )
 
 ------------------------------------------------------------------------
 --- Check whether a function definition is a property,
@@ -40,8 +41,15 @@ isPropIOType texp = case texp of
 isEquivProperty :: CFuncDecl -> Maybe (CExpr,CExpr)
 isEquivProperty fdecl =
   case funcRules fdecl of
-    [CRule [] (CSimpleRhs (CApply (CApply (CSymbol prop) e1) e2) [])]
-      -> if isEquivSymbol prop then Just (e1,e2) else Nothing
+    [CRule args (CSimpleRhs (CApply (CApply (CSymbol prop) e1) e2) [])]
+      -> if isEquivSymbol prop
+           then
+             if null args
+               then Just (e1,e2)
+               else error $ "Illegal equivalence property '" ++
+                            snd (funcName fdecl) ++ "':\n" ++
+                            "Non-empty parameter list!"
+           else Nothing
     _ -> Nothing
  where
   isEquivSymbol (qn,mn) = isCheckModule qn && mn=="<=>"

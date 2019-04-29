@@ -4,17 +4,20 @@
 -- that the implementation is satisfies the specification
 -- and the post-condition.
 
+perm :: [a] -> [a]
 perm []     = []
 perm (x:xs) = insert x (perm xs)
  where
    insert x ys     = x : ys
    insert x (y:ys) = y : insert x ys
 
+sorted :: Ord a => [a] -> Bool
 sorted []       = True
 sorted [_]      = True
 sorted (x:y:ys) | x<=y && sorted (y:ys) = True
 
 -- Postcondition: input and output lists should have the same length
+sort'post :: [Int] -> [Int] -> Bool
 sort'post xs ys = length xs == length ys
 
 -- Specification of sort:

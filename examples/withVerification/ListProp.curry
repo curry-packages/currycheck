@@ -8,6 +8,7 @@ append :: [a] -> [a] -> [a]
 append xs ys = xs ++ ys
 
 -- Postcondition: append add length of input lists.
+append'post :: [a] -> [a] -> [a] -> Bool
 append'post xs ys zs = length xs + length ys == length zs
 
 -- We formulate the postcondition as a property:

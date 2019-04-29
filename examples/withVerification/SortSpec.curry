@@ -10,17 +10,20 @@
 
 import Test.Prop
 
+perm :: [a] -> [a]
 perm []     = []
 perm (x:xs) = ndinsert x (perm xs)
  where
    ndinsert x ys     = x : ys
    ndinsert x (y:ys) = y : ndinsert x ys
 
+sorted :: Ord a => [a] -> Bool
 sorted []       = True
 sorted [_]      = True
 sorted (x:y:ys) | x<=y && sorted (y:ys) = True
 
 -- Postcondition: input and output lists should have the same length
+sort'post :: [Int] -> [Int] -> Bool
 sort'post xs ys = length xs == length ys && sorted ys
 
 -- Specification of sort:

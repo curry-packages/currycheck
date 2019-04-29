@@ -21,6 +21,7 @@ module SimplifyPostConds
 import AbstractCurry.Types
 import AbstractCurry.Select
 import AbstractCurry.Build
+import Contract.Names
 import List                 (last, maximum)
 import Maybe                (maybeToList)
 import ReadShowTerm         (readQTerm)
@@ -29,8 +30,6 @@ import Rewriting.Term
 import Rewriting.Position
 import Rewriting.Substitution
 import Rewriting.Rules
-
-import ContractUsage
 
 -- Simplify the postconditions contained in the third argument w.r.t. a given
 -- list of theorems (second argument).

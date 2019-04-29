@@ -14,7 +14,7 @@
 ---   (together with possible preconditions).
 ---
 --- @author Michael Hanus, Jan-Patrick Baye
---- @version January 2019
+--- @version April 2019
 -------------------------------------------------------------------------
 
 import Char            ( toUpper )
@@ -33,6 +33,7 @@ import qualified AbstractCurry.Pretty as ACPretty
 import AbstractCurry.Transform ( renameCurryModule, trCTypeExpr, updCProg
                                , updQNamesInCProg, updQNamesInCFuncDecl )
 import Analysis.Termination    ( Productivity(..) )
+import Contract.Names
 import qualified FlatCurry.Types as FC
 import FlatCurry.Files
 import qualified FlatCurry.Goodies as FCG
@@ -48,7 +49,7 @@ import CC.Config          ( packagePath, packageVersion )
 import CC.Helpers         ( ccLoadPath )
 import CC.Options
 import CheckDetUsage      ( checkDetUse, containsDetOperations)
-import ContractUsage
+import Contract.Usage     ( checkContractUsage )
 import DefaultRuleUsage   ( checkDefaultRules, containsDefaultRules )
 import PropertyUsage
 import SimplifyPostConds  ( simplifyPostConditionsWithTheorems )
@@ -61,7 +62,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 02/01/2019)"
+                packageVersion ++ " of 29/04/2019)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -476,7 +477,8 @@ classifyTest opts prog test =
       EquivTest tname f1 f2 (defaultingType qtexp) 0
     (CTyped (CSymbol f1) qtexp, CTyped (CSymbol f2) _) ->
       EquivTest tname f1 f2 (defaultingType qtexp) 0
-    (e1,e2) -> error $ "Illegal equivalence property:\n" ++
+    (e1,e2) -> error $ "Illegal equivalence property '" ++
+                       snd tname ++ "':\n" ++
                        showCExpr e1 ++ " <=> " ++ showCExpr e2
 
   defaultingType = poly2defaultType opts . typeOfQualType . defaultQualType
@@ -873,13 +875,16 @@ staticProgAnalysis :: Options -> String -> String -> CurryProg
                    -> IO ([String],[(QName,String)])
 staticProgAnalysis opts modname progtxt prog = do
   putStrIfDetails opts "Checking source code for static errors...\n"
+  fcyprog <- readFlatCurry modname
   useerrs <- if optSource opts then checkBlacklistUse prog else return []
-  seterrs <- if optSource opts then readFlatCurry modname >>= checkSetUse
+  seterrs <- if optSource opts then checkSetUse fcyprog
                                else return []
   let defruleerrs = if optSource opts then checkDefaultRules prog else []
   untypedprog <- readUntypedCurry modname
   let detuseerrs   = if optSource opts then checkDetUse untypedprog else []
-      contracterrs = checkContractUse prog
+      contracterrs = checkContractUsage modname
+                       (map (\fd -> (snd (FCG.funcName fd), FCG.funcType fd))
+                            (FCG.progFuncs fcyprog))
       staticerrs = concat [seterrs,useerrs,defruleerrs,detuseerrs,contracterrs]
       missingCPP =
        if (containsDefaultRules prog || containsDetOperations untypedprog)
