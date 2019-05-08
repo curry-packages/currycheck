@@ -14,7 +14,13 @@ unzip1 ((x,y):ps) = (x:xs,y:ys) where (xs,ys) = unzip1 ps
 
 --- Definition from Chitil'11:
 unzip2 :: [(a,b)] -> ([a],[b])
-unzip2 xs = foldr (\(a,b) (as,bs) -> (a:as,b:bs)) ([],[]) xs
+unzip2 xs = foldr (\ (a,b) (as,bs) -> (a:as,b:bs)) ([],[]) xs
 
--- These operations are not equivalent:
+-- Equivalence falsified by 27th test:
 unzipEquiv = unzip1 <=> unzip2
+
+-- Equivalence falsified by 6th test:
+unzipEquiv'TERMINATE = unzip1 <=> unzip2
+
+-- Ground equivalence is not falsified:
+unzipEquiv'GROUND xs = unzip1 xs <~> unzip2 xs

@@ -1,7 +1,7 @@
 --- Example to show the non-equivalence of two versions of the
 --- `take` operation, taken from
 ---
---- Foner, K. and Zhang, H. and Lampropoulos, L.: {Keep Your Laziness in Check
+--- Foner, K. and Zhang, H. and Lampropoulos, L.: Keep Your Laziness in Check
 --- ICFP 2018,
 --- DOI: 10.1145/3236797
 
@@ -27,5 +27,8 @@ take_groundequiv x xs = take1 x xs <~> take2 x xs
 -- by evaluating `take... failed [])` or `take... 0 failed`.
 -- Thus, we check the equivalence with CurryCheck:
 
--- In PAKCS, the counter example is reported by the 11th test:
+-- Equivalence is falsified by the 11th test:
 take_equiv = take1 <=> take2
+
+-- With termination information, equivalence is falsified by the 2nd test:
+take_equiv'TERMINATE = take1 <=> take2

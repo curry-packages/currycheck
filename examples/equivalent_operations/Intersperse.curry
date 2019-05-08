@@ -22,5 +22,11 @@ intersperse2 sep (x:xs) = x : go xs
   go (y:ys) = sep : y : go ys
 
 
--- These operations are not equivalent:
+-- These operations are not equivalent (falsified by 43th test):
 intersperseEquiv = intersperse1 <=> intersperse2
+
+-- These operations are not equivalent (falsified by 4th test):
+intersperseEquiv'TERMINATE = intersperse1 <=> intersperse2
+
+-- Ground equivalence testing is successful:
+intersperseEquiv'GROUND x xs = intersperse1 x xs <~> intersperse2 x xs

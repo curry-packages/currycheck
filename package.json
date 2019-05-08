@@ -15,15 +15,14 @@
         "easycheck"     : ">= 0.0.1",
         "flatcurry"     : ">= 2.0.0",
         "frontend-exec" : ">= 0.0.1",
-        "peano"         : ">= 1.0.0",
         "profiling"     : ">= 1.0.0",
         "rewriting"     : ">= 2.0.0",
         "setfunctions"  : ">= 0.0.1",
         "wl-pprint"     : ">= 0.0.1"
     },
     "compilerCompatibility": {
-        "pakcs": ">= 2.0.0",
-        "kics2": ">= 2.0.0"
+        "pakcs": ">= 2.0.0, < 3.0.0",
+        "kics2": ">= 2.0.0, < 3.0.0"
     },
     "configModule": "CC.Config",
     "executable": {

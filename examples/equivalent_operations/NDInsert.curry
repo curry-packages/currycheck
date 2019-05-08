@@ -23,3 +23,6 @@ ndinsert_groundequiv x xs = ndinsert1 x xs <~> ndinsert2 x xs
 -- In PAKCS, the counter example is reported by the 7th test:
 ndinsert_equiv = ndinsert1 <=> ndinsert2
 
+-- With termination info, the counter example is reported by the 1st test:
+ndinsert_equiv'TERMINATE = ndinsert1 <=> ndinsert2
+
