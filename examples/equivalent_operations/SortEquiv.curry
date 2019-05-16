@@ -31,8 +31,8 @@ isort xs = idSorted (perm xs)
 -- to avoid error message w.r.t. polymorphic types with unspecifed type class
 -- contexts):
 
--- In PAKCS, the counter example is reported by the 274th test:
-psort_equiv_isort'PRODUCTIVE = psort <=> (isort :: [Int] -> [Int])
+-- In PAKCS, the counter example is reported by the 89th test:
+psort_equiv_isort'PRODUCTIVE = psort <=> (isort :: [Ordering] -> [Ordering])
 
--- In PAKCS, the counter example is reported by the 21th test:
-psort_equiv_isort'TERMINATE = psort <=> (isort :: [Int] -> [Int])
+-- In PAKCS, the counter example is reported by the 11th test:
+psort_equiv_isort'TERMINATE = psort <=> (isort :: [Ordering] -> [Ordering])

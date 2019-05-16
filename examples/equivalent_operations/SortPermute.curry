@@ -18,7 +18,7 @@ permute (x:xs) = ndinsert (permute xs)
 sorted :: Ord a => [a] -> Bool
 sorted [] = True
 sorted [_] = True
-sorted (x:y:zs) = x<=y && sorted (y:zs)
+sorted (x:xs@(y:_)) = x<=y && sorted xs
 
 psort :: Ord a => [a] -> [a]
 psort xs | sorted ys = ys where ys = permute xs
@@ -28,7 +28,7 @@ psort xs | sorted ys = ys where ys = permute xs
 idSorted :: Ord a => [a] -> [a]
 idSorted [] = []
 idSorted [x] = [x]
-idSorted (x:y:zs) | x<=y = x : idSorted (y:zs)
+idSorted (x:xs@(y:_)) | x<=y = x : idSorted xs
 
 isort :: Ord a => [a] -> [a]
 isort xs = idSorted (permute xs)
