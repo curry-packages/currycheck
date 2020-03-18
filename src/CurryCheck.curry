@@ -1587,7 +1587,8 @@ printTestStatistics opts mods testmodname retcode tests = do
       csvheader = ["Return code", "Total", "Unit", "Prop", "Equiv", "IO",
                    "Modules"]
       csvdata   = [retcode,numtests,unittests,proptests,equvtests,iotests]
-  unless (isQuiet opts || retcode /= 0) $ putStrLn $ withColor opts green outs
+  unless (isQuiet opts || retcode /= 0 || numtests == 0) $
+    putStrLn $ withColor opts green outs
   let statdir = optStatDir opts
   unless (null statdir) $ createDirectoryIfMissing True statdir
   tstring <- getTimeString
@@ -1599,7 +1600,7 @@ printTestStatistics opts mods testmodname retcode tests = do
                    else optStatFile opts
   unless (null statfile) $ writeCSVFile statfile
     [csvheader, map show csvdata ++ [unwords mods]]
-  putStrIfDetails opts $ "Statistics written to '" ++ show statfile ++ "'."
+  putStrIfDetails opts $ "Statistics written to '" ++ show statfile ++ "'.\n"
  where
   sumOf p = length . filter p $ tests
 
@@ -1636,27 +1637,33 @@ main = do
    then do showStaticErrors opts staticerrs
            putStrLn $ withColor opts red "Testing aborted!"
            cleanup opts testmodname finaltestmodules
+           printTestStatistics opts mods testmodname 1 []
            exitWith 1
-   else if null finaltestmodules then exitWith 0 else do
-    putStrIfNormal opts $ withColor opts blue $
-                          "Generating main test module '"++testmodname++"'..."
-    putStrIfDetails opts "\n"
-    finaltests <- genMainTestModule opts testmodname finaltestmodules
-    showGeneratedModule opts "main test" testmodname
-    putStrIfNormal opts $ withColor opts blue $ "and compiling it...\n"
-    let runcmd = unwords $
-                   [ installDir </> "bin" </> "curry"
-                   , "--noreadline"
-                   , ":set -time"
-                   , ":set " ++ if optVerb opts > 3 then "v1" else "v0"
-                   , ":set parser -Wnone"
-                   , if null currypath then "" else ":set path " ++ currypath
-                   , ":l "++testmodname,":eval main :q" ]
-    putStrLnIfDebug opts $ "Executing command:\n" ++ runcmd
-    ret <- system runcmd
-    cleanup opts testmodname finaltestmodules
-    printTestStatistics opts mods testmodname ret finaltests
-    exitWith ret
+   else
+     if null finaltestmodules
+       then do
+         printTestStatistics opts mods testmodname 0 []
+         exitWith 0
+       else do
+         putStrIfNormal opts $ withColor opts blue $
+           "Generating main test module '"++testmodname++"'..."
+         putStrIfDetails opts "\n"
+         finaltests <- genMainTestModule opts testmodname finaltestmodules
+         showGeneratedModule opts "main test" testmodname
+         putStrIfNormal opts $ withColor opts blue $ "and compiling it...\n"
+         let runcmd = unwords $
+                     [ installDir </> "bin" </> "curry"
+                     , "--noreadline"
+                     , ":set -time"
+                     , ":set " ++ if optVerb opts > 3 then "v1" else "v0"
+                     , ":set parser -Wnone"
+                     , if null currypath then "" else ":set path " ++ currypath
+                     , ":l "++testmodname,":eval main :q" ]
+         putStrLnIfDebug opts $ "Executing command:\n" ++ runcmd
+         ret <- system runcmd
+         cleanup opts testmodname finaltestmodules
+         printTestStatistics opts mods testmodname ret finaltests
+         exitWith ret
  where
   showStaticErrors opts errs = putStrLn $ withColor opts red $
     unlines (line : "STATIC ERRORS IN PROGRAMS:" : errs) ++ line
