@@ -29,6 +29,8 @@ data Options = Options
   , optTime     :: Bool
   , optColor    :: Bool
   , optMainProg :: String
+  , optStatFile :: String
+  , optStatDir  :: String
   }
 
 -- Default command line options.
@@ -50,6 +52,8 @@ defaultOptions  = Options
   , optTime     = False
   , optColor    = True
   , optMainProg = ""
+  , optStatFile = ""
+  , optStatDir  = ""
   }
 
 --- Options for equivalence tests.
@@ -105,7 +109,13 @@ options =
            "do not use colors when showing tests"
   , Option "" ["mainprog"]
            (ReqArg (\s opts -> opts { optMainProg = s }) "<prog>")
-           "name of generated main program\n(default: TEST<pid>.curry)"
+           "name of generated main program\n(default: TEST<pid>)"
+  , Option "" ["statfile"]
+           (ReqArg (\s opts -> opts { optStatFile = s }) "<file>")
+           "write test statistics in CSV format into <file>"
+  , Option "" ["statdir"]
+           (ReqArg (\s opts -> opts { optStatDir = s }) "<dir>")
+           "write statistics as CSV file into directory <dir>"
   ]
  where
   safeReadNat opttrans s opts =

@@ -18,12 +18,14 @@
 -------------------------------------------------------------------------
 
 import Char            ( toUpper )
+import Directory       ( createDirectoryIfMissing )
 import Distribution    ( curryCompiler, installDir )
 import FilePath        ( (</>), pathSeparator, takeDirectory )
 import GetOpt
 import List
 import Maybe           ( fromJust, isJust )
 import System          ( system, exitWith, getArgs, getPID, setEnviron )
+import Time
 
 import AbstractCurry.Types
 import AbstractCurry.Files     ( readCurryWithParseOptions, readUntypedCurry )
@@ -41,6 +43,7 @@ import System.Console.ANSI.Codes
 import System.CurryPath    ( modNameToPath, lookupModuleSourceInLoadPath
                            , stripCurrySuffix )
 import System.FrontendExec ( defaultParams, setQuiet )
+import Text.CSV            ( writeCSVFile )
 import Text.Pretty         ( pPrint )
 
 import CC.AnalysisHelpers ( getTerminationInfos, getProductivityInfos
@@ -62,7 +65,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 29/04/2019)"
+                packageVersion ++ " of 18/03/2020)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -1569,20 +1572,43 @@ cleanup opts mainmod modules =
             system $ "rm -f " ++ srcfilename
             done )
 
--- Show some statistics about number of tests:
-showTestStatistics :: Options -> [Test] -> String
-showTestStatistics opts tests =
+-- Print or store some statistics about number of tests.
+printTestStatistics :: Options -> [String] -> String -> Int -> [Test] -> IO ()
+printTestStatistics opts mods testmodname retcode tests = do
   let numtests  = sumOf (const True)
       unittests = sumOf isUnitTest  
       proptests = sumOf isPropTest  
       equvtests = sumOf isEquivTest 
       iotests   = sumOf isIOTest    
-   in "TOTAL NUMBER OF TESTS: " ++ show numtests ++
-      " (UNIT: " ++ show unittests ++ ", PROPERTIES: " ++
-      show proptests ++ ", EQUIVALENCE: " ++ show equvtests ++
-      (if optIOTest opts then ", IO: " ++ show iotests else "") ++ ")"
+      outs = "TOTAL NUMBER OF TESTS: " ++ show numtests ++
+             " (UNIT: " ++ show unittests ++ ", PROPERTIES: " ++
+             show proptests ++ ", EQUIVALENCE: " ++ show equvtests ++
+             (if optIOTest opts then ", IO: " ++ show iotests else "") ++ ")"
+      csvheader = ["Return code", "Total", "Unit", "Prop", "Equiv", "IO",
+                   "Modules"]
+      csvdata   = [retcode,numtests,unittests,proptests,equvtests,iotests]
+  unless (isQuiet opts || retcode /= 0) $ putStrLn $ withColor opts green outs
+  let statdir = optStatDir opts
+  unless (null statdir) $ createDirectoryIfMissing True statdir
+  tstring <- getTimeString
+  let statfile = if null (optStatFile opts)
+                   then if null statdir
+                          then ""
+                          else statdir </>
+                               testmodname ++ "_" ++ tstring ++ ".csv"
+                   else optStatFile opts
+  unless (null statfile) $ writeCSVFile statfile
+    [csvheader, map show csvdata ++ [unwords mods]]
+  putStrIfDetails opts $ "Statistics written to '" ++ show statfile ++ "'."
  where
   sumOf p = length . filter p $ tests
+
+  getTimeString = do
+    ltime <- getLocalTime
+    return $ concatMap (\f -> show2 (f ltime))
+                       [ctYear, ctMonth, ctDay, ctHour, ctMin, ctSec]
+   where show2 n = if n < 10 then '0' : show n
+                             else show n
 
 -------------------------------------------------------------------------
 main :: IO ()
@@ -1629,8 +1655,7 @@ main = do
     putStrLnIfDebug opts $ "Executing command:\n" ++ runcmd
     ret <- system runcmd
     cleanup opts testmodname finaltestmodules
-    unless (isQuiet opts || ret /= 0) $
-      putStrLn $ withColor opts green $ showTestStatistics opts finaltests
+    printTestStatistics opts mods testmodname ret finaltests
     exitWith ret
  where
   showStaticErrors opts errs = putStrLn $ withColor opts red $
