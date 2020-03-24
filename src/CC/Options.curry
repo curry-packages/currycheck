@@ -30,7 +30,6 @@ data Options = Options
   , optColor    :: Bool
   , optMainProg :: String
   , optStatFile :: String
-  , optStatDir  :: String
   }
 
 -- Default command line options.
@@ -53,7 +52,6 @@ defaultOptions  = Options
   , optColor    = True
   , optMainProg = ""
   , optStatFile = ""
-  , optStatDir  = ""
   }
 
 --- Options for equivalence tests.
@@ -113,9 +111,6 @@ options =
   , Option "" ["statfile"]
            (ReqArg (\s opts -> opts { optStatFile = s }) "<file>")
            "write test statistics in CSV format into <file>"
-  , Option "" ["statdir"]
-           (ReqArg (\s opts -> opts { optStatDir = s }) "<dir>")
-           "write statistics as CSV file into directory <dir>"
   ]
  where
   safeReadNat opttrans s opts =

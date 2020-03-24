@@ -14,7 +14,7 @@
 ---   (together with possible preconditions).
 ---
 --- @author Michael Hanus, Jan-Patrick Baye
---- @version April 2019
+--- @version March 2020
 -------------------------------------------------------------------------
 
 import Char            ( toUpper )
@@ -25,7 +25,6 @@ import GetOpt
 import List
 import Maybe           ( fromJust, isJust )
 import System          ( system, exitWith, getArgs, getPID, setEnviron )
-import Time
 
 import AbstractCurry.Types
 import AbstractCurry.Files     ( readCurryWithParseOptions, readUntypedCurry )
@@ -65,7 +64,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 18/03/2020)"
+                packageVersion ++ " of 24/03/2020)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -1589,27 +1588,12 @@ printTestStatistics opts mods testmodname retcode tests = do
       csvdata   = [retcode,numtests,unittests,proptests,equvtests,iotests]
   unless (isQuiet opts || retcode /= 0 || numtests == 0) $
     putStrLn $ withColor opts green outs
-  let statdir = optStatDir opts
-  unless (null statdir) $ createDirectoryIfMissing True statdir
-  tstring <- getTimeString
-  let statfile = if null (optStatFile opts)
-                   then if null statdir
-                          then ""
-                          else statdir </>
-                               testmodname ++ "_" ++ tstring ++ ".csv"
-                   else optStatFile opts
+  let statfile = optStatFile opts
   unless (null statfile) $ writeCSVFile statfile
     [csvheader, map show csvdata ++ [unwords mods]]
   putStrIfDetails opts $ "Statistics written to '" ++ show statfile ++ "'.\n"
  where
   sumOf p = length . filter p $ tests
-
-  getTimeString = do
-    ltime <- getLocalTime
-    return $ concatMap (\f -> show2 (f ltime))
-                       [ctYear, ctMonth, ctDay, ctHour, ctMin, ctSec]
-   where show2 n = if n < 10 then '0' : show n
-                             else show n
 
 -------------------------------------------------------------------------
 main :: IO ()
