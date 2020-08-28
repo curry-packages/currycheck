@@ -14,7 +14,7 @@
 ---   (together with possible preconditions).
 ---
 --- @author Michael Hanus, Jan-Patrick Baye
---- @version March 2020
+--- @version August 2020
 -------------------------------------------------------------------------
 
 import Char            ( toUpper )
@@ -64,7 +64,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 24/03/2020)"
+                packageVersion ++ " of 28/08/2020)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -1589,9 +1589,9 @@ printTestStatistics opts mods testmodname retcode tests = do
   unless (isQuiet opts || retcode /= 0 || numtests == 0) $
     putStrLn $ withColor opts green outs
   let statfile = optStatFile opts
-  unless (null statfile) $ writeCSVFile statfile
-    [csvheader, map show csvdata ++ [unwords mods]]
-  putStrIfDetails opts $ "Statistics written to '" ++ show statfile ++ "'.\n"
+  unless (null statfile) $ do
+    writeCSVFile statfile [csvheader, map show csvdata ++ [unwords mods]]
+    putStrIfDetails opts $ "Statistics written to '" ++ show statfile ++ "'.\n"
  where
   sumOf p = length . filter p $ tests
 
