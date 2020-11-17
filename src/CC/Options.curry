@@ -4,11 +4,12 @@
 
 module CC.Options where
 
-import Char        ( toUpper )
-import GetOpt
-import IO
-import List        ( isPrefixOf )
-import ReadNumeric ( readNat )
+import Control.Monad        ( unless, when )
+import Data.Char            ( toUpper )
+import Data.List            ( isPrefixOf )
+import Numeric              ( readNat )
+import System.Console.GetOpt
+import System.IO
 
 ------------------------------------------------------------------------------
 -- Representation of command line options.
@@ -89,7 +90,7 @@ options =
            "do not perform source code checks"
   , Option "" ["noiotest"]
            (NoArg (\opts -> opts { optIOTest = False }))
-           "do not test I/O properties"
+           "do not test I/O properties or unsafe modules"
   , Option "" ["noprop"]
            (NoArg (\opts -> opts { optProp = False }))
            "do not perform property tests"
@@ -113,11 +114,9 @@ options =
            "write test statistics in CSV format into <file>"
   ]
  where
-  safeReadNat opttrans s opts =
-   let numError = error "Illegal number argument (try `-h' for help)" in
-    maybe numError
-          (\ (n,rs) -> if null rs then opttrans n opts else numError)
-          (readNat s)
+  safeReadNat opttrans s opts = case readNat s of
+   [(n,"")] -> opttrans n opts
+   _        -> error "Illegal number argument (try `-h' for help)"
 
   checkVerb n opts = if n>=0 && n<5
                      then opts { optVerb = n }

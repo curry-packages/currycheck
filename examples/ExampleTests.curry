@@ -1,9 +1,9 @@
 -- In order to write a test, we have to import the module Test.Prop:
 import Test.Prop
 
--- We import the System module for performing some I/O tests on operations
+-- We import thist module to perform some I/O tests on operations
 -- in this module:
-import System
+import System.Environment ( getEnv, setEnv, unsetEnv )
 
 --------------------------------------------------------------------------
 -- Deterministic tests:
@@ -73,7 +73,7 @@ coin_plus_coin_multi = coin+coin <~~> (0?1?1?2)
 -- `last` defined with a functional pattern always yields a single result.
 -- This can be done by checking whether each call of `last` with
 -- a non-empty list yields a single result:
-last :: [a] -> a
+last :: Data a => [a] -> a
 last (_ ++ [x]) = x
 
 last_has_single_results xs = not (null xs) ==> last xs # 1
@@ -90,10 +90,10 @@ last_has_single_results xs = not (null xs) ==> last xs # 1
 evar = "abc123"
 
 -- First, we check whether setting this variable works:
-set_environ = (setEnviron evar "SET" >> getEnviron evar) `returns` "SET"
+set_environ = (setEnv evar "SET" >> getEnv evar) `returns` "SET"
 
 -- Now we check whether unsetting works:
-unset_environ = (unsetEnviron evar >> getEnviron evar) `returns` ""
+unset_environ = (unsetEnv evar >> getEnv evar) `returns` ""
 
 -- We can also compare the results of two actions with `sameReturns`:
 sameIO = return (6*7) `sameReturns` return 42

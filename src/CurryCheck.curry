@@ -14,17 +14,19 @@
 ---   (together with possible preconditions).
 ---
 --- @author Michael Hanus, Jan-Patrick Baye
---- @version August 2020
+--- @version November 2020
 -------------------------------------------------------------------------
 
-import Char            ( toUpper )
-import Directory       ( createDirectoryIfMissing )
-import Distribution    ( curryCompiler, installDir )
-import FilePath        ( (</>), pathSeparator, takeDirectory )
-import GetOpt
-import List
-import Maybe           ( fromJust, isJust )
-import System          ( system, exitWith, getArgs, getPID, setEnviron )
+import Control.Monad            ( unless, when )
+import Data.Char                ( toUpper )
+import Data.List
+import Data.Maybe               ( fromJust, isJust )
+import System.Directory         ( createDirectoryIfMissing )
+import System.FilePath         ( (</>), pathSeparator, takeDirectory )
+import System.Console.GetOpt
+import System.Environment      ( getArgs, setEnv )
+import System.Process          ( system, exitWith, getPID )
+import System.Console.ANSI.Codes
 
 import AbstractCurry.Types
 import AbstractCurry.Files     ( readCurryWithParseOptions, readUntypedCurry )
@@ -38,7 +40,7 @@ import Contract.Names
 import qualified FlatCurry.Types as FC
 import FlatCurry.Files
 import qualified FlatCurry.Goodies as FCG
-import System.Console.ANSI.Codes
+import Language.Curry.Distribution ( curryCompiler, installDir )
 import System.CurryPath    ( modNameToPath, lookupModuleSourceInLoadPath
                            , stripCurrySuffix )
 import System.FrontendExec ( defaultParams, setQuiet )
@@ -64,7 +66,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 28/08/2020)"
+                packageVersion ++ " of 16/11/2020)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -203,7 +205,7 @@ equivPropTypes testmod = concatMap equivTypesOf (propTests testmod)
 genTestFuncs :: Options -> (QName -> Bool) -> (QName -> Productivity) -> String
              -> TestModule -> IO [CFuncDecl]
 genTestFuncs opts terminating productivity mainmod tm =
-  liftM (filter (not . null . funcRules))
+  fmap (filter (not . null . funcRules))
         (mapM genTestFunc (propTests tm))
  where
   genTestFunc test = case test of
@@ -256,8 +258,8 @@ genTestFuncs opts terminating productivity mainmod tm =
 
   -- Operation equivalence test for terminating operations:
   equivBodyTerm f1 f2 texp test =
-    let xvars  = map (\i -> (i,"x"++show i)) [1 .. arityOfType texp]
-        pxvars = map (\i -> (i,"px"++show i)) [1 .. arityOfType texp]
+    let xvars  = map (\i -> (i,"x" ++ show i)) [1 .. arityOfType texp]
+        pxvars = map (\i -> (i,"px" ++ show i)) [1 .. arityOfType texp]
         pvalOfFunc = ctype2typeop mainmod "pvalOf_" (resultType texp)
     in propOrEquivBody
          (map (\t -> ctype2BotType mainmod False t) (argTypes texp))
@@ -275,8 +277,8 @@ genTestFuncs opts terminating productivity mainmod tm =
 
   -- Operation equivalence test for arbitrary operations:
   equivBodyAny f1 f2 texp test =
-    let xvars  = map (\i -> (i,"x"++show i))  [1 .. arityOfType texp]
-        pxvars = map (\i -> (i,"px"++show i)) [1 .. arityOfType texp]
+    let xvars  = map (\i -> (i,"x" ++ show i))  [1 .. arityOfType texp]
+        pxvars = map (\i -> (i,"px" ++ show i)) [1 .. arityOfType texp]
         pvar   = (2,"p")
         pvalOfFunc = ctype2typeop mainmod "peval_" (resultType texp)
     in propOrEquivBody
@@ -419,7 +421,7 @@ transFuncArgsInProp mainmod argtypes propexp
              in letExpr (concat locals) (applyE propexp (map CVar nvars)))
   | otherwise = propexp
  where
-  vars = map (\i -> (i,"x"++show i)) [1 .. length argtypes]
+  vars = map (\i -> (i,"x" ++ show i)) [1 .. length argtypes]
 
   ftype2let (texp,v@(j,xj)) =
     if isFunctionalType texp
@@ -550,7 +552,7 @@ transformTests opts prfnames theofuncs
           (\ _ -> case classifyTest opts prog fdecl of
             EquivTest _ f1 f2 texp _ ->
              let ar    = arityOfType texp
-                 cvars = map (\i -> (i,"x"++show i)) [1 .. ar]
+                 cvars = map (\i -> (i,"x" ++ show i)) [1 .. ar]
              in stFunc (funcName fdecl) ar Public (propResultType texp)
                   [simpleRule (map CPVar cvars)
                               (applyF (easyCheckModule,"<~>")
@@ -633,7 +635,7 @@ genPostCondTest prefuns postops prooffnames
  where
   postname = (mn, fn ++ postCondSuffix) -- name of generated post cond. test
   ar       = arityOfType texp
-  cvars    = map (\i -> (i,"x"++show i)) [1 .. ar]
+  cvars    = map (\i -> (i,"x" ++ show i)) [1 .. ar]
   rcall    = applyF qf (map CVar cvars)
   postprop = applyF (easyCheckModule,"always")
                     [applyF (mn,toPostCondName fn)
@@ -677,7 +679,7 @@ genSpecGroundEquivTest prefuns qf@(mn,fn) clscon texp =
                   applyF (mn,toSpecName fn) (map CVar cvars)])]
  where
   ar     = arityOfType texp
-  cvars  = map (\i -> (i,"x"++show i)) [1 .. ar]
+  cvars  = map (\i -> (i,"x" ++ show i)) [1 .. ar]
   qfspec = (mn, toSpecName fn)
 
 -- Adds the preconditions of operations (second argument), if they are
@@ -734,7 +736,7 @@ genDetProp prefuns (CFunc (mn,fn) ar _ (CQualType clscon texp) _) =
  where
   rtypevars = tvarsOfType (resultType texp)
   forg      = take (length fn - 9) fn
-  cvars     = map (\i -> (i,"x"++show i)) [1 .. ar]
+  cvars     = map (\i -> (i,"x" ++ show i)) [1 .. ar]
   forgcall  = applyF (mn,forg) (map CVar cvars)
   rnumcall  = applyF (easyCheckModule,"#<") [forgcall, cInt 2]
 
@@ -867,10 +869,12 @@ analyseModule :: Options -> String -> IO [TestModule]
 analyseModule opts modname = do
   putStrIfNormal opts $ withColor opts blue $
                         "Analyzing module '" ++ modname ++ "'...\n"
-  catch (readCurryWithParseOptions modname (setQuiet True defaultParams) >>=
+  catch (readCurryWithParseOptions modname defaultParams >>= --(setQuiet True defaultParams) >>=
          analyseCurryProg opts modname)
-        (\_ -> return [staticErrorTestMod modname
-                         ["Module '"++modname++"': incorrect source program"]])
+        (\err -> return
+           [staticErrorTestMod modname
+              ["Module '" ++ modname ++ "': incorrect source program:\n" ++
+               "ERROR: " ++ show err]])
 
 -- Analyse a Curry module for static errors:
 staticProgAnalysis :: Options -> String -> String -> CurryProg
@@ -904,7 +908,8 @@ analyseCurryProg opts modname orgprog = do
   let prog = renameProp2EasyCheck orgprog
   (topdir,srcfilename) <- lookupModuleSourceInLoadPath modname >>=
         return .
-        maybe (error $ "Source file of module '"++modname++"' not found!") id
+        maybe (error $ "Source file of module '" ++ modname ++ "' not found!")
+              id
   let srcdir = takeDirectory srcfilename
   putStrLnIfDebug opts $ "Source file: " ++ srcfilename
   prooffiles <- if optProof opts
@@ -929,16 +934,16 @@ analyseCurryProg opts modname orgprog = do
           . renameCurryModule pubmodname . makeAllPublic $ prog
   let (rawDetTests,ignoredDetTests,pubdetmod) =
         transformDetTests opts prooffiles
-              . renameCurryModule (modname++"_PUBLICDET")
+              . renameCurryModule (modname ++ "_PUBLICDET")
               . makeAllPublic $ prog
   unless (not (null staticerrs) || null rawTests && null rawDetTests) $
     putStrIfNormal opts $
       "Properties to be tested:\n" ++
-      unwords (map (snd . funcName) (rawTests++rawDetTests)) ++ "\n"
+      unwords (map (snd . funcName) (rawTests ++ rawDetTests)) ++ "\n"
   unless (not (null staticerrs) || null ignoredTests && null ignoredDetTests) $
     putStrIfNormal opts $
       "Properties ignored for testing:\n" ++
-      unwords (map (snd . funcName) (ignoredTests++ignoredDetTests)) ++ "\n"
+      unwords (map (snd . funcName) (ignoredTests ++ ignoredDetTests)) ++ "\n"
   let tm    = TestModule modname
                          (progName pubmod)
                          staticerrs
@@ -995,7 +1000,7 @@ genBottomType :: String -> FC.TypeDecl -> CTypeDecl
 genBottomType _ (FC.TypeSyn _ _ _ _) =
   error "genBottomType: cannot translate type synonyms"
 genBottomType mainmod (FC.Type qtc@(_,tc) _ tvars consdecls) =
-  CType (mainmod,t2bt tc) Public (map transTVar tvars)
+  CType (mainmod,t2bt tc) Public (map (transTVar . fst) tvars)
         (simpleCCons (mainmod,"Bot_"++transQN tc) Public [] :
          if isPrimExtType qtc
            then [simpleCCons (mainmod,"Value_"++tc) Public [baseType qtc]]
@@ -1080,15 +1085,15 @@ genPeval mainmod (FC.Type qtc@(_,tc) _ tvars consdecls) =
        then [valueRule]
        else map genConsRule consdecls)
  where
-  botSym = (mainmod,"Bot_"++transQN tc) -- bottom constructor
+  botSym = (mainmod, "Bot_" ++ transQN tc) -- bottom constructor
   
   -- variables for polymorphic type arguments:
-  polyavars = [ (i,"a"++show i) | i <- tvars]
-  polyrvars = [ (i,"b"++show i) | i <- tvars]
+  polyavars = [ (i,"a" ++ show i) | i <- map fst tvars]
+  polyrvars = [ (i,"b" ++ show i) | i <- map fst tvars]
   
   genConsRule (FC.Cons qc@(_,cons) _ _ argtypes) =
-    let args  = [(i,"x"++show i) | i <- [0 .. length argtypes - 1]]
-        pargs = [(i,"y"++show i) | i <- [0 .. length argtypes - 1]]
+    let args  = [(i,"x" ++ show i) | i <- [0 .. length argtypes - 1]]
+        pargs = [(i,"y" ++ show i) | i <- [0 .. length argtypes - 1]]
         pcons = (mainmod,t2bt cons)
     in simpleRule (map CPVar polyavars ++
                    [CPComb qc (map CPVar args), CPComb pcons (map CPVar pargs)])
@@ -1140,11 +1145,11 @@ genPValOf mainmod (FC.Type qtc@(_,tc) _ tvars consdecls) =
        else map genConsRule consdecls)
  where
   -- variables for polymorphic type arguments:
-  polyavars = [ (i,"a"++show i) | i <- tvars]
-  polyrvars = [ (i,"b"++show i) | i <- tvars]
+  polyavars = [ (i,"a" ++ show i) | i <- map fst tvars]
+  polyrvars = [ (i,"b" ++ show i) | i <- map fst tvars]
   
   genConsRule (FC.Cons qc@(_,cons) _ _ argtypes) =
-    let args = [(i,"x"++show i) | i <- [0 .. length argtypes - 1]]
+    let args = [(i,"x" ++ show i) | i <- [0 .. length argtypes - 1]]
     in simpleRule (map CPVar polyavars ++ [CPComb qc (map CPVar args)])
          (applyF (mainmod,t2bt cons)
             (map (\ (e,te) ->
@@ -1218,10 +1223,10 @@ genShowP mainmod (FC.Type qtc@(_,tc) _ tvars consdecls) =
        else map genConsRule consdecls)]
  where
   -- variables for polymorphic type arguments:
-  polyavars = [ (i,"a"++show i) | i <- tvars]
+  polyavars = [ (i,"a" ++ show i) | i <- map fst tvars]
   
   genConsRule (FC.Cons (_,cons) _ _ argtypes) =
-    let args = [(i,"x"++show i) | i <- [0 .. length argtypes - 1]]
+    let args = [(i,"x" ++ show i) | i <- [0 .. length argtypes - 1]]
         showargs = map (\v -> applyF (pre "show") [CVar v]) args
     in simpleRule [CPComb (mainmod,t2bt cons) (map CPVar args)]
          (if null showargs
@@ -1267,11 +1272,11 @@ genFromP mainmod (FC.Type qtc@(_,tc) _ tvars consdecls) =
        else map genConsRule consdecls)
  where
   -- variables for polymorphic type arguments:
-  polyavars = [ (i,"a"++show i) | i <- tvars]
-  polyrvars = [ (i,"b"++show i) | i <- tvars]
+  polyavars = [ (i,"a" ++ show i) | i <- map fst tvars]
+  polyrvars = [ (i,"b" ++ show i) | i <- map fst tvars]
   
   genConsRule (FC.Cons qc@(_,cons) _ _ argtypes) =
-    let args = [(i,"x"++show i) | i <- [0 .. length argtypes - 1]]
+    let args = [(i,"x" ++ show i) | i <- [0 .. length argtypes - 1]]
     in simpleRule (map CPVar polyavars ++
                    [CPComb (mainmod,t2bt cons) (map CPVar args)])
          (applyF qc
@@ -1306,11 +1311,12 @@ ctypedecl2ftypedecl (CTypeSyn _ _ _ _) =
 ctypedecl2ftypedecl (CNewType _ _ _ _ _) =
   error "ctypedecl2ftypedecl: cannot translate newtype"
 ctypedecl2ftypedecl (CType qtc _ tvars consdecls _) =
-  FC.Type qtc FC.Public (map fst tvars) (map transConsDecl consdecls)
+  FC.Type qtc FC.Public (map (\ (v,_) -> (v,FC.KStar)) tvars)
+          (map transConsDecl consdecls)
  where
-  transConsDecl (CCons _ _ qc _ argtypes) =
+  transConsDecl (CCons qc _ argtypes) =
     FC.Cons qc (length argtypes) FC.Public (map transTypeExpr argtypes)
-  transConsDecl (CRecord _ _ _ _ _) =
+  transConsDecl (CRecord  _ _ _) =
     error "ctypedecl2ftypedecl: cannot translate records"
 
   transTypeExpr (CTVar (i,_)) = FC.TVar i
@@ -1366,12 +1372,14 @@ genMainTestModule opts mainmod orgtestmods = do
                    map (genPartialPrimDataGenerator mainmod)
                        (map FCG.typeName
                             (filter (isPrimExtType . FCG.typeName) equvrtypes))
-  testfuncs <- liftM concat
+  testfuncs <- fmap concat
                  (mapM (genTestFuncs opts terminfos prodinfos mainmod) testmods)
   let mainFunction = genMainFunction opts mainmod testfuncs
       imports      = nub $ [ easyCheckModule, easyCheckExecModule
                            , searchTreeModule, generatorModule
-                           , "List", "Char", "Maybe", "System", "Debug.Profile"
+                           , "Control.Monad"
+                           , "Data.List", "Data.Char", "Data.Maybe"
+                           , "System.Process", "Debug.Profile"
                            , "System.Console.ANSI.Codes" ] ++
                            map (fst . fst) testtypes ++
                            map testModuleName testmods
@@ -1407,9 +1415,9 @@ genMainFunction opts testModule testfuncs =
                  [constF (pre (if optColor opts then "True" else "False")),
                   constF (pre (if optTime  opts then "True" else "False")),
                   list2ac $ map (constF . funcName) testfuncs]
-     , CSExpr $ applyF (pre "when")
+     , CSExpr $ applyF ("Control.Monad", "when")
                   [applyF (pre "/=") [cvar "x1", cInt 0],
-                   applyF ("System", "exitWith") [cvar "x1"]]
+                   applyF ("System.Process", "exitWith") [cvar "x1"]]
      ]
 
 -- Remove all tests that should not be executed.
@@ -1519,7 +1527,7 @@ genTestDataGenerator mainmod tdecl = type2genData tdecl
       = applyF (generatorModule, "genCons" ++ show ar)
                ([CSymbol qn] ++ map type2gen ctypes)
 
-    type2gen (FC.TVar i) = CVar (i,"a"++show i)
+    type2gen (FC.TVar i) = CVar (i,"a" ++ show i)
     type2gen (FC.FuncType _ _) =
       error $ "Type '" ++ qtString ++
               "': cannot create value generators for functions!"
@@ -1529,8 +1537,8 @@ genTestDataGenerator mainmod tdecl = type2genData tdecl
       error $ "Type '" ++ qtString ++
               "': cannot create value generators for forall types!"
 
-    ctvars = map (\i -> CTVar (i,"a"++show i)) tvars
-    cvars  = map (\i -> (i,"a"++show i)) tvars
+    ctvars = map (\(i,_) -> CTVar (i,"a" ++ show i)) tvars
+    cvars  = map (\(i,_) -> (i,"a" ++ show i)) tvars
 
 -- Generates a test data generator for a partial primitive type
 -- where some constant is used as a value (instead of generating all values).
@@ -1561,15 +1569,15 @@ cleanup :: Options -> String -> [TestModule] -> IO ()
 cleanup opts mainmod modules =
   unless (optKeep opts) $ do
     removeCurryModule mainmod
-    mapIO_ removeCurryModule (map testModuleName modules)
+    mapM_ removeCurryModule (map testModuleName modules)
  where
   removeCurryModule modname =
     lookupModuleSourceInLoadPath modname >>=
-    maybe done
+    maybe (return ())
           (\ (_,srcfilename) -> do
             system $ installDir </> "bin" </> "cleancurry" ++ " " ++ modname
             system $ "rm -f " ++ srcfilename
-            done )
+            return () )
 
 -- Print or store some statistics about number of tests.
 printTestStatistics :: Options -> [String] -> String -> Int -> [Test] -> IO ()
@@ -1607,11 +1615,11 @@ main = do
   putStrIfNormal opts ccBanner
   when (null args || optHelp opts) (putStrLn usageText >> exitWith 1)
   let mods = map stripCurrySuffix args
-  mapIO_ checkModuleName mods
+  mapM_ checkModuleName mods
   currypath  <- ccLoadPath
-  --putStrLn $ "export CURRYPATH=" ++ currypath
-  setEnviron "CURRYPATH" currypath
-  testModules <- mapIO (analyseModule opts) mods
+  putStrLnIfDebug opts $ "SET CURRYPATH=" ++ currypath
+  setEnv "CURRYPATH" currypath
+  testModules <- mapM (analyseModule opts) mods
   let staticerrs       = concatMap staticErrors (concat testModules)
       finaltestmodules = filter testThisModule (concat testModules)
       testmodname = if null (optMainProg opts)
@@ -1719,8 +1727,7 @@ writeCurryProgram :: Options -> String -> CurryProg -> String -> IO ()
 writeCurryProgram opts srcdir p appendix = do
   let progfile = srcdir </> modNameToPath (progName p) ++ ".curry"
   putStrLnIfDebug opts $ "Writing program: " ++ progfile
-  writeFile progfile
-            (ACPretty.showCProg p ++ "\n" ++ appendix ++ "\n")
+  writeFile progfile (ACPretty.showCProg p ++ "\n" ++ appendix ++ "\n")
 
 isPAKCS :: Bool
 isPAKCS = curryCompiler == "pakcs"

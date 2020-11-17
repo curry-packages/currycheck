@@ -53,7 +53,7 @@ inExp (Typed se te) x e = Typed (inExp se x e) te
 --- Note that this construction is necessary to achieve a finite search
 --- space when matching against a finite expression with the operation
 --- `inExp`.
-withElem :: a -> a -> [a] -> [a]
+withElem :: Data a => a -> a -> [a] -> [a]
 withElem e x zs = prefix ++ e : (zs=:=prefix++(x:suffix) &> suffix)
    where prefix,suffix free
 

@@ -13,8 +13,8 @@
 
 module UsageCheck(checkSetUse, checkBlacklistUse) where
 
-import Char(isDigit)
-import Read(readNat)
+import Data.Char ( isDigit )
+import Numeric   ( readNat )
 
 import qualified AbstractCurry.Types as AC
 import AbstractCurryMatch
@@ -56,7 +56,9 @@ validSetFunCall ct n args
   = if arity==0 then isFuncCall (head args)
                 else isFuncPartCall arity (head args)
  where
-  arity = readNat n
+  arity = case readNat n of
+            [(i,"")] -> i
+            _        -> error "UsageCheck.validSetFunCall: illegal number!"
 
 isFuncCall :: Expr -> Bool
 isFuncCall e = case e of

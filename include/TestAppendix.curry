@@ -8,9 +8,9 @@
 --- needed for checking each property is shown.
 runPropertyTests :: Bool -> Bool -> [IO (Maybe String)] -> IO Int
 runPropertyTests withcolor withtime props = do
-  failedmsgs <- sequenceIO (if withtime then map showRunTimeFor props
-                                        else props)
-                >>= return . Maybe.catMaybes
+  failedmsgs <- sequence (if withtime then map showRunTimeFor props
+                                      else props)
+                >>= return . Data.Maybe.catMaybes
   if null failedmsgs
    then return 0
    else do
@@ -43,8 +43,9 @@ instance (Show a, Show b) => Show (Func a b) where
   show (Func abs)
     | null abs  = "{ _ -> failed }"
     | otherwise
-    = "{" ++ List.intercalate ", " (map showMap (tail abs) ++
-                                    ["_ -> " ++ show (snd (head abs))]) ++ "}"
+    = "{" ++ Data.List.intercalate ", "
+               (map showMap (tail abs) ++
+                ["_ -> " ++ show (snd (head abs))]) ++ "}"
    where
     showMap (x,y) = show x ++ " -> " ++ show y
 
@@ -101,8 +102,8 @@ constrValue :: [String] -> String
 constrValue xs = case xs of
   []      -> ""
   [c]     -> c
-  [c,x,y] -> if Char.isAlpha (head c) then bracket $ unwords xs
-                                      else bracket $ unwords [x,c,y]
+  [c,x,y] -> if Data.Char.isAlpha (head c) then bracket $ unwords xs
+                                           else bracket $ unwords [x,c,y]
   _       -> bracket $ unwords xs
  where
   bracket s = '(' : s ++ ")"

@@ -5,9 +5,9 @@
 module CC.Helpers ( ccLoadPath )
  where
 
-import FilePath  ( splitSearchPath )
-import List      ( intercalate, isInfixOf )
-import System    ( getEnviron )
+import System.FilePath    ( splitSearchPath )
+import Data.List          ( intercalate, isInfixOf )
+import System.Environment ( getEnv )
 
 import CC.Config ( packageLoadPath )
 
@@ -17,7 +17,7 @@ import CC.Config ( packageLoadPath )
 --- and the additional load path for packages required by CurryCheck.
 ccLoadPath :: IO String
 ccLoadPath = do
-    ecurrypath <- getEnviron "CURRYPATH"
+    ecurrypath <- getEnv "CURRYPATH"
     let ecurrypath' = case ecurrypath of ':':_ -> '.':ecurrypath
                                          _     -> ecurrypath
     return $ intercalate ":"
@@ -32,5 +32,6 @@ ccExecLoadPath =
  where
   isRequiredPackage dir =
     any (`isInfixOf` dir)
-        [ "ansi-terminal", "easycheck", "profiling", "random"
-        , "searchtree", "setfunctions" ]
+        [ "ansi-terminal", "directory", "distribution", "easycheck"
+        , "filepath", "process", "profiling", "random"
+        , "searchtree", "setfunctions", "time" ]
