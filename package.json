@@ -22,6 +22,10 @@
         "setfunctions"  : ">= 3.0.0, < 4.0.0",
         "wl-pprint"     : ">= 3.0.0, < 4.0.0"
     },
+    "compilerCompatibility": {
+        "pakcs": ">= 3.0.0, < 4.0.0",
+        "kics2": ">= 3.0.0, < 4.0.0"
+    },
     "configModule": "CC.Config",
     "executable": {
         "name": "curry-check",
