@@ -1486,9 +1486,13 @@ collectAllTestTypeDecls opts fcprogs tdecls testtypenames = do
   allTConsInDecl :: FC.TypeDecl -> [QName]
   allTConsInDecl = FCG.trType (\_ _ _ -> concatMap allTConsInConsDecl)
                               (\_ _ _ -> allTConsInTypeExpr)
+                              (\_ _ _ -> allTConsInNewConsDecl)
 
   allTConsInConsDecl :: FC.ConsDecl -> [QName]
   allTConsInConsDecl = FCG.trCons (\_ _ _ -> concatMap allTConsInTypeExpr)
+
+  allTConsInNewConsDecl :: FC.NewConsDecl -> [QName]
+  allTConsInNewConsDecl = FCG.trNewCons (\_ _ -> allTConsInTypeExpr)
 
   allTConsInTypeExpr :: FC.TypeExpr -> [QName]
   allTConsInTypeExpr =
