@@ -49,12 +49,15 @@ setUse (_ ++
         ++ _)
   | not (validSetFunCall ct n args) = (qf,n)
 
---- Checks whether an application of a set function is as intended.
+--- Checks whether an application of a set function `setn` is as intended.
+--- Note that the first `n` arguments are `Data` dictionaries.
 validSetFunCall :: CombType -> String -> [Expr] -> Bool
 validSetFunCall ct n args
   | ct==FuncCall && all isDigit n && not (null args)
   = if arity==0 then isFuncCall (head args)
-                else isFuncPartCall arity (head args)
+                else length args > arity &&
+                     -- drop dictionary arguments:
+                     isFuncPartCall arity (head (drop arity args))
  where
   arity = case readNat n of
             [(i,"")] -> i
@@ -70,6 +73,7 @@ isFuncPartCall n e = case e of
   Comb (FuncPartCall p) qf _ -> p==n && isID qf
   _                          -> False
 
+-- Checks whether the name is a regular top-level name.
 isID :: QName -> Bool
 isID (_,n) = all (`elem` infixIDs) n || '.' `notElem` n
  where
