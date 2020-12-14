@@ -7,7 +7,7 @@ import Test.Prop
 -- equivalent to the standard one:
 
 -- zip2 with default rule:
-zip2 :: [a] -> [b] -> [(a,b)]
+zip2 :: (Data a, Data b) => [a] -> [b] -> [(a,b)]
 zip2 (x:xs) (y:ys) = (x,y) : zip2 xs ys
 zip2'default _ _ = []
 

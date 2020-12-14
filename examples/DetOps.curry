@@ -6,9 +6,10 @@
 --- that the original operations are indeed deterministic.
 
 -- Computes the last element of a list.
-last :: [a] ->DET a
+last :: Data a => [a] ->DET a
 last (_ ++ [x]) = x
 
+last'pre :: Data a => [a] -> Bool
 last'pre = not . null
 
 -- Definition of bubble sort with default rule as a deterministic operaion.
