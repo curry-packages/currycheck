@@ -14,18 +14,19 @@
 ---   (together with possible preconditions).
 ---
 --- @author Michael Hanus, Jan-Patrick Baye
---- @version November 2020
+--- @version December 2020
 -------------------------------------------------------------------------
 
-import Control.Monad            ( unless, when )
-import Data.Char                ( toUpper )
+import Control.Monad               ( unless, when )
+import Curry.Compiler.Distribution ( curryCompiler, installDir )
+import Data.Char                   ( toUpper )
 import Data.List
-import Data.Maybe               ( fromJust, isJust )
-import System.Directory         ( createDirectoryIfMissing )
-import System.FilePath         ( (</>), pathSeparator, takeDirectory )
+import Data.Maybe                  ( fromJust, isJust )
+import System.Directory            ( createDirectoryIfMissing )
+import System.FilePath             ( (</>), pathSeparator, takeDirectory )
 import System.Console.GetOpt
-import System.Environment      ( getArgs, setEnv )
-import System.Process          ( system, exitWith, getPID )
+import System.Environment          ( getArgs, setEnv )
+import System.Process              ( system, exitWith, getPID )
 import System.Console.ANSI.Codes
 
 import AbstractCurry.Types
@@ -40,7 +41,6 @@ import Contract.Names
 import qualified FlatCurry.Types as FC
 import FlatCurry.Files
 import qualified FlatCurry.Goodies as FCG
-import Language.Curry.Distribution ( curryCompiler, installDir )
 import System.CurryPath    ( modNameToPath, lookupModuleSourceInLoadPath
                            , stripCurrySuffix )
 import System.FrontendExec ( defaultParams, setQuiet )
