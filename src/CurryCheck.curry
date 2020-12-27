@@ -42,7 +42,7 @@ import qualified FlatCurry.Types as FC
 import FlatCurry.Files
 import qualified FlatCurry.Goodies as FCG
 import System.CurryPath    ( modNameToPath, lookupModuleSourceInLoadPath
-                           , stripCurrySuffix )
+                           , runModuleAction, stripCurrySuffix )
 import System.FrontendExec ( defaultParams, setQuiet )
 import Text.CSV            ( writeCSVFile )
 import Text.Pretty         ( pPrint )
@@ -66,7 +66,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 16/11/2020)"
+                packageVersion ++ " of 27/12/2020)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -869,7 +869,10 @@ analyseModule :: Options -> String -> IO [TestModule]
 analyseModule opts modname = do
   putStrIfNormal opts $ withColor opts blue $
                         "Analyzing module '" ++ modname ++ "'...\n"
-  catch (readCurryWithParseOptions modname defaultParams >>= --(setQuiet True defaultParams) >>=
+  let parserparams = if optVerb opts < 2
+                       then setQuiet True defaultParams
+                       else defaultParams
+  catch (readCurryWithParseOptions modname parserparams >>=
          analyseCurryProg opts modname)
         (\err -> return
            [staticErrorTestMod modname
@@ -999,6 +1002,8 @@ generatorsOfProg = map funcName . filter isGen . functions
 genBottomType :: String -> FC.TypeDecl -> CTypeDecl
 genBottomType _ (FC.TypeSyn _ _ _ _) =
   error "genBottomType: cannot translate type synonyms"
+genBottomType _ (FC.TypeNew _ _ _ _) =
+  error "genBottomType: cannot translate newtypes"
 genBottomType mainmod (FC.Type qtc@(_,tc) _ tvars consdecls) =
   CType (mainmod,t2bt tc) Public (map (transTVar . fst) tvars)
         (simpleCCons (mainmod,"Bot_"++transQN tc) Public [] :
@@ -1070,6 +1075,8 @@ f_equiv_g x p = peval_C (f x) p <~> peval_C (g x) p
 genPeval :: String -> FC.TypeDecl -> CFuncDecl
 genPeval _ (FC.TypeSyn _ _ _ _) =
   error "genPeval: cannot translate type synonyms"
+genPeval _ (FC.TypeNew _ _ _ _) =
+  error "genPeval: cannot translate newtypes"
 genPeval mainmod (FC.Type qtc@(_,tc) _ tvars consdecls) =
   cmtfunc ("Evaluate a `"++tc++"` value up to a partial approxmiation.")
     (mainmod,"peval_"++transQN tc) 1 Public
@@ -1130,6 +1137,8 @@ f_equiv_g x = pvalOf_C (f x) <~> pvalOf_C (g x)
 genPValOf :: String -> FC.TypeDecl -> CFuncDecl
 genPValOf _ (FC.TypeSyn _ _ _ _) =
   error "genPValOf: cannot translate type synonyms"
+genPValOf _ (FC.TypeNew _ _ _ _) =
+  error "genPValOf: cannot translate newtypes"
 genPValOf mainmod (FC.Type qtc@(_,tc) _ tvars consdecls) =
   cmtfunc ("Map a `"++tc++"` value into all its partial approximations.")
     (mainmod,"pvalOf_"++transQN tc) 1 Public
@@ -1208,6 +1217,8 @@ instance Show P_C where
 genShowP :: String -> FC.TypeDecl -> CInstanceDecl
 genShowP _ (FC.TypeSyn _ _ _ _) =
   error "genShowP: cannot translate type synonyms"
+genShowP _ (FC.TypeNew _ _ _ _) =
+  error "genShowP: cannot translate newtypes"
 genShowP mainmod (FC.Type qtc@(_,tc) _ tvars consdecls) =
   CInstance (pre "Show")
             (CContext (map (\tv -> (pre "Show", CTVar tv)) polyavars))
@@ -1256,6 +1267,8 @@ from_P_C (P_C x) = C (from_P_AB x)
 genFromP :: String -> FC.TypeDecl -> CFuncDecl
 genFromP _ (FC.TypeSyn _ _ _ _) =
   error "genFromP: cannot translate type synonyms"
+genFromP _ (FC.TypeNew _ _ _ _) =
+  error "genFromP: cannot translate newtypes"
 genFromP mainmod (FC.Type qtc@(_,tc) _ tvars consdecls) =
   cmtfunc ("Map a partial `"++tc++"` value into its real value (or fail).")
     (mainmod,"from_P_"++transQN tc) 1 Public
@@ -1508,6 +1521,8 @@ genTestDataGenerator mainmod tdecl = type2genData tdecl
 
   type2genData (FC.TypeSyn _ _ _ _) =
     error $ "Cannot create generator for type synonym " ++ qtString
+  type2genData (FC.TypeNew _ _ _ _) =
+    error $ "Cannot create generator for newtype " ++ qtString
   type2genData (FC.Type _ _ tvars cdecls)
     | null cdecls
     = error $ "Cannot create value generator for type '" ++ qtString ++
@@ -1611,26 +1626,39 @@ printTestStatistics opts mods testmodname retcode tests = do
 main :: IO ()
 main = do
   argv <- getArgs
-  pid  <- getPID
   let (funopts, args, opterrors) = getOpt Permute options argv
   opts <- processOpts (foldl (flip id) defaultOptions funopts)
   unless (null opterrors)
          (putStr (unlines opterrors) >> putStrLn usageText >> exitWith 1)
   putStrIfNormal opts ccBanner
-  when (null args || optHelp opts) (putStrLn usageText >> exitWith 1)
+  when (optHelp opts) (putStrLn usageText >> exitWith 0)
   let mods = map stripCurrySuffix args
-  mapM_ checkModuleName mods
+  case mods of
+    []  -> putStrLn usageText >> exitWith 1
+    [m] -> runModuleAction (\mn -> checkModules opts [mn]) m
+    _   -> do mapM_ checkModuleName mods
+              checkModules opts mods
+ where
+  checkModuleName mn =
+    when (pathSeparator `elem` mn) $ do
+      putStrLn $
+        "More than one module name with path prefixes not allowed:\n" ++ mn
+      exitWith 1
+
+checkModules :: Options -> [String] -> IO ()
+checkModules opts mods = do
   currypath  <- ccLoadPath
   putStrLnIfDebug opts $ "SET CURRYPATH=" ++ currypath
   setEnv "CURRYPATH" currypath
   testModules <- mapM (analyseModule opts) mods
+  pid  <- getPID
   let staticerrs       = concatMap staticErrors (concat testModules)
       finaltestmodules = filter testThisModule (concat testModules)
       testmodname = if null (optMainProg opts)
                       then "TEST" ++ show pid
                       else optMainProg opts
   if not (null staticerrs)
-   then do showStaticErrors opts staticerrs
+   then do showStaticErrors staticerrs
            putStrLn $ withColor opts red "Testing aborted!"
            cleanup opts testmodname finaltestmodules
            printTestStatistics opts mods testmodname 1 []
@@ -1661,13 +1689,8 @@ main = do
          printTestStatistics opts mods testmodname ret finaltests
          exitWith ret
  where
-  showStaticErrors opts errs = putStrLn $ withColor opts red $
+  showStaticErrors errs = putStrLn $ withColor opts red $
     unlines (line : "STATIC ERRORS IN PROGRAMS:" : errs) ++ line
-
-  checkModuleName mn =
-    when (pathSeparator `elem` mn) $ do
-      putStrLn $ "Module names with path prefixes not allowed: " ++ mn
-      exitWith 1
 
   line = take 78 (repeat '=')
 

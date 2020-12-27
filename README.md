@@ -1,4 +1,4 @@
-# currycheck - A Property Testing Tool for Curry
+# CurryCheck - A Property Testing Tool for Curry
 
 This package contains the tool `curry-check` that supports
 the automation of testing Curry programs.
