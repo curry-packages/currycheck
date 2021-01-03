@@ -66,7 +66,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 27/12/2020)"
+                packageVersion ++ " of 03/01/2021)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
