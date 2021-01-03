@@ -3,7 +3,7 @@
 --- of AbstractCurry expressions via deep pattern matching.
 ---------------------------------------------------------------------------
 
-{-# OPTIONS_CYMAKE -Wno-overlapping #-}
+{-# OPTIONS_FRONTEND -Wno-overlapping #-}
 
 import AbstractCurry.Types
 

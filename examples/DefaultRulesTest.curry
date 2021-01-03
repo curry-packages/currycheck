@@ -1,5 +1,5 @@
-{-# OPTIONS_CYMAKE -F --pgmF=currypp --optF=defaultrules #-}
-{-# OPTIONS_CYMAKE -Wnone #-}
+{-# OPTIONS_FRONTEND -F --pgmF=currypp --optF=defaultrules #-}
+{-# OPTIONS_FRONTEND -Wnone #-}
 
 import Test.Prop
 

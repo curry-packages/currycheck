@@ -14,7 +14,7 @@
 ---   (together with possible preconditions).
 ---
 --- @author Michael Hanus, Jan-Patrick Baye
---- @version December 2020
+--- @version January 2021
 -------------------------------------------------------------------------
 
 import Control.Monad               ( unless, when )
@@ -900,7 +900,7 @@ staticProgAnalysis opts modname progtxt prog = do
           && not (containsPPOptionLine progtxt)
        then ["'" ++ modname ++
            "' uses default rules or det. operations but not the preprocessor!",
-           "Hint: insert line: {-# OPTIONS_CYMAKE -F --pgmF=currypp #-}"]
+           "Hint: insert line: {-# OPTIONS_FRONTEND -F --pgmF=currypp #-}"]
        else []
   return (missingCPP,staticerrs)
 
@@ -1759,12 +1759,13 @@ writeCurryProgram opts srcdir p appendix = do
 isPAKCS :: Bool
 isPAKCS = curryCompiler == "pakcs"
 
--- Does a program text contains a OPTIONS_CYMAKE line to call currypp?
+-- Does a program text contains a OPTIONS_FRONTEND line to call currypp?
 containsPPOptionLine :: String -> Bool
 containsPPOptionLine = any isOptionLine . lines
  where
-   isOptionLine s = "{-# OPTIONS_CYMAKE " `isPrefixOf` s -- -}
-                    && "currypp" `isInfixOf` s
+  isOptionLine s = ("{-# OPTIONS_CYMAKE "   `isPrefixOf` s ||
+                    "{-# OPTIONS_FRONTEND " `isPrefixOf` s )   -- -}
+                   && "currypp" `isInfixOf` s
 
 tconsOf :: CTypeExpr -> [QName]
 tconsOf (CTVar _)           = []

@@ -1,4 +1,4 @@
-{-# OPTIONS_CYMAKE -F --pgmF=currypp --optF=defaultrules #-}
+{-# OPTIONS_FRONTEND -F --pgmF=currypp --optF=defaultrules #-}
 
 --- Examples for specifying deterministic operations via
 --- the DET annotation in the type.

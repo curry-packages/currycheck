@@ -17,7 +17,7 @@
 ---
 --- whereas both yields in `True` in KiCS2.
 
-{-# OPTIONS_CYMAKE -F --pgmF=currypp --optF=defaultrules #-}
+{-# OPTIONS_FRONTEND -F --pgmF=currypp --optF=defaultrules #-}
 
 import qualified Data.List
 import Test.Prop
