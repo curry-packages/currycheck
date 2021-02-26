@@ -66,7 +66,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 03/01/2021)"
+                packageVersion ++ " of 26/02/2021)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -1676,13 +1676,15 @@ checkModules opts mods = do
          showGeneratedModule opts "main test" testmodname
          putStrIfNormal opts $ withColor opts blue $ "and compiling it...\n"
          let runcmd = unwords $
-                     [ installDir </> "bin" </> "curry"
-                     , "--noreadline"
-                     , ":set -time"
-                     , ":set " ++ if optVerb opts > 3 then "v1" else "v0"
-                     , ":set parser -Wnone"
-                     , if null currypath then "" else ":set path " ++ currypath
-                     , ":l "++testmodname,":eval main :q" ]
+                        [ installDir </> "bin" </> "curry"
+                        , "--noreadline" ] ++
+                        (if null currypath
+                           then []
+                           else ["--nocypm", ":set path " ++ currypath]) ++
+                        [ ":set -time"
+                        , ":set " ++ if optVerb opts > 3 then "v1" else "v0"
+                        , ":set parser -Wnone"
+                        , ":l "++testmodname,":eval main :q" ]
          putStrLnIfDebug opts $ "Executing command:\n" ++ runcmd
          ret <- system runcmd
          cleanup opts testmodname finaltestmodules
