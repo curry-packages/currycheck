@@ -5,6 +5,8 @@
 --- CurryCheck generates and check properties which states
 --- that the original operations are indeed deterministic.
 
+import Control.SetFunctions -- required by default rules
+
 -- Computes the last element of a list.
 last :: Data a => [a] ->DET a
 last (_ ++ [x]) = x

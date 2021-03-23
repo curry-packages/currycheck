@@ -1,6 +1,7 @@
 {-# OPTIONS_FRONTEND -F --pgmF=currypp --optF=defaultrules #-}
 {-# OPTIONS_FRONTEND -Wnone #-}
 
+import Control.SetFunctions -- required by default rules
 import Test.Prop
 
 -- We test whether our definition of zip with default rules is

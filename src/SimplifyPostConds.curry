@@ -11,7 +11,7 @@
 ---      theorem'sorted xs = always (sorted (sort xs))
 ---
 --- @author Michael Hanus
---- @version October 2016
+--- @version March 2021
 ------------------------------------------------------------------------
 
 module SimplifyPostConds
@@ -21,7 +21,6 @@ module SimplifyPostConds
 import Control.Monad        ( unless, when )
 import Data.List            ( last, maximum )
 import Data.Maybe           ( maybeToList )
-import ReadShowTerm         ( readQTerm )
 
 import AbstractCurry.Types
 import AbstractCurry.Select
@@ -218,8 +217,8 @@ term2acy cvars (TermCons (mn,fn) args)
 
 const2literal :: QName -> CLiteral
 const2literal sl = case sl of
-  ("i",s) -> CIntc   (readQTerm s)
-  ("f",s) -> CFloatc (readQTerm s)
+  ("i",s) -> CIntc   (read s)
+  ("f",s) -> CFloatc (read s)
   ("c",s) -> CCharc  (head s)
   ("s",s) -> CStringc s
   _   -> error "const2literal: unknown literal"
