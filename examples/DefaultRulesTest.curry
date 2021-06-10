@@ -1,4 +1,4 @@
-{-# OPTIONS_FRONTEND -F --pgmF=currypp --optF=defaultrules #-}
+{-# OPTIONS_FRONTEND -F --pgmF=currypp --optF=defaultrules --optF=-o #-}
 {-# OPTIONS_FRONTEND -Wnone #-}
 
 import Control.SetFunctions -- required by default rules
@@ -8,7 +8,7 @@ import Test.Prop
 -- equivalent to the standard one:
 
 -- zip2 with default rule:
-zip2 :: (Data a, Data b) => [a] -> [b] -> [(a,b)]
+zip2 :: [a] -> [b] -> [(a,b)]
 zip2 (x:xs) (y:ys) = (x,y) : zip2 xs ys
 zip2'default _ _ = []
 

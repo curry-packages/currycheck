@@ -8,7 +8,7 @@
 --- See example program `Examples/UsageErrors.curry` for some examples.
 ---
 --- @author Michael Hanus
---- @version December 2018
+--- @version June 2021
 ---------------------------------------------------------------------------
 
 module UsageCheck(checkSetUse, checkBlacklistUse) where
@@ -50,14 +50,11 @@ setUse (_ ++
   | not (validSetFunCall ct n args) = (qf,n)
 
 --- Checks whether an application of a set function `setn` is as intended.
---- Note that the first `n` arguments are `Data` dictionaries.
 validSetFunCall :: CombType -> String -> [Expr] -> Bool
 validSetFunCall ct n args
   | ct==FuncCall && all isDigit n && not (null args)
   = if arity==0 then isFuncCall (head args)
-                else length args > arity &&
-                     -- drop dictionary arguments:
-                     isFuncPartCall arity (head (drop arity args))
+                else isFuncPartCall arity (head args)
  where
   arity = case readNat n of
             [(i,"")] -> i
