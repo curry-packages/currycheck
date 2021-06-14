@@ -14,7 +14,7 @@
 ---   (together with possible preconditions).
 ---
 --- @author Michael Hanus, Jan-Patrick Baye
---- @version January 2021
+--- @version June 2021
 -------------------------------------------------------------------------
 
 import Control.Monad               ( unless, when )
@@ -1678,13 +1678,14 @@ checkModules opts mods = do
          let runcmd = unwords $
                         [ installDir </> "bin" </> "curry"
                         , "--noreadline" ] ++
-                        (if null currypath
-                           then []
-                           else ["--nocypm", ":set path " ++ currypath]) ++
+                        (if null currypath then [] else ["--nocypm"]) ++
                         [ ":set -time"
                         , ":set " ++ if optVerb opts > 3 then "v1" else "v0"
-                        , ":set parser -Wnone"
-                        , ":l "++testmodname,":eval main :q" ]
+                        , ":set parser -Wnone" ] ++
+                        (if null currypath
+                           then []
+                           else [":set path \"" ++ currypath ++ "\""]) ++
+                        [ ":l "++testmodname, ":eval main :q" ]
          putStrLnIfDebug opts $ "Executing command:\n" ++ runcmd
          ret <- system runcmd
          cleanup opts testmodname finaltestmodules
