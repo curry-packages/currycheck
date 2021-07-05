@@ -8,7 +8,7 @@
 --- See example program `Examples/UsageErrors.curry` for some examples.
 ---
 --- @author Michael Hanus
---- @version June 2021
+--- @version July 2021
 ---------------------------------------------------------------------------
 
 module UsageCheck(checkSetUse, checkBlacklistUse) where
@@ -31,51 +31,65 @@ checkSetUse (Prog _ _ _ fdecls _) = do
   seterrors <- values2list (set1 setUse fdecls)
   return (map showSetError seterrors)
  where
-  showSetError (qf,sar) =
-    (qf, "wrong use of set function `set" ++ sar ++ "'!")
+  showSetError (qf,sar,reason) =
+    (qf, "wrong use of set function `set" ++ sar ++ "': " ++ reason ++ "!")
 
 --- Returns some unintended use of a set function occurring in a list
 --- of function declarations. The name of the function together with
---- the arity of the set function used is returned.
+--- the arity of the set function used and a reason is returned.
 --- Set functions are intended to be used only on top-level functions
---- with the right arity.
+--- with the correct arity.
 ---
 --- To provide a simple implementation, we exploit functional patterns
 --- with the function `funWithinExp`.
-setUse :: [FuncDecl] -> (QName, String)
---setUse (_ ++ [funWithExp qf (Comb ct ("Control.SetFunctions","set"++n) args)] ++ _)
+setUse :: [FuncDecl] -> (QName, String, String)
 setUse (_ ++
-        [funWithinExp qf _ _ (Comb ct ("Control.SetFunctions","set"++n) args)]
-        ++ _)
-  | not (validSetFunCall ct n args) = (qf,n)
+        [funWithinExp qf _ _ (Comb ct ("Control.SetFunctions", "set" ++ n) args)]
+        ++ _) =
+  invalidSetFunCall qf ct n args
 
---- Checks whether an application of a set function `setn` is as intended.
-validSetFunCall :: CombType -> String -> [Expr] -> Bool
-validSetFunCall ct n args
-  | ct==FuncCall && all isDigit n && not (null args)
+--- Checks whether an application of a set function `setn` is unintended.
+invalidSetFunCall :: QName -> CombType -> String -> [Expr] -> (QName,String,String)
+invalidSetFunCall qf ct sar args
+  | not (all isDigit sar)
+  = (qf,sar,"suffix of set function is not a number")
+  | ct==FuncCall && null args
+  = (qf,sar,"missing function argument")
+  | ct==FuncCall
   = if arity==0 then isFuncCall (head args)
                 else isFuncPartCall arity (head args)
+  | otherwise
+  = (qf,sar,"partial application of set function")
  where
-  arity = case readNat n of
+  arity = case readNat sar of
             [(i,"")] -> i
             _        -> error "UsageCheck.validSetFunCall: illegal number!"
 
-isFuncCall :: Expr -> Bool
-isFuncCall e = case e of
-  Comb FuncCall qf [] -> isID qf
-  _                   -> False
+  isFuncCall e = case e of
+    Comb FuncCall (_,fn) [] -> checkTopLevelID fn
+    _                       -> arityError 0
 
-isFuncPartCall :: Int -> Expr -> Bool
-isFuncPartCall n e = case e of
-  Comb (FuncPartCall p) qf _ -> p==n && isID qf
-  _                          -> False
+  isFuncPartCall n e = case e of
+    Comb (FuncPartCall p) (_,fn) _ -> if p==n then checkTopLevelID fn
+                                              else arityError n
+    _                              -> arityError n
 
--- Checks whether the name is a regular top-level name.
-isID :: QName -> Bool
-isID (_,n) = all (`elem` infixIDs) n || '.' `notElem` n
- where
-  infixIDs :: String
-  infixIDs =  "~!@#$%^&*+-=<>?./|\\:"
+  checkTopLevelID fn | isID fn   = failed
+                     | otherwise = (qf,sar,"set function not applied to top-level name")
+
+  -- Checks whether the name is a regular top-level name.
+  isID fn = all (`elem` infixIDs) fn || '.' `notElem` fn
+   where
+    infixIDs :: String
+    infixIDs =  "~!@#$%^&*+-=<>?./|\\:"
+
+  arityError n = (qf,sar,"set function not applied to " ++ showArity n ++ " top-level function")
+
+  showArity n | n == 0    = "0-ary"
+              | n == 1    = "unary"
+              | n == 2    = "binary"
+              | otherwise = show n ++ "-ary"
+
 
 ---------------------------------------------------------------------
 --- Returns messages about uses of black-listed operations occurring

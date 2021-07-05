@@ -66,7 +66,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 26/02/2021)"
+                packageVersion ++ " of 05/07/2021)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -141,9 +141,13 @@ testLine (EquivTest _ _ _ _ n) = n
 
 -- Generates a useful error message for tests (with module and line number)
 genTestMsg :: String -> Test -> String
-genTestMsg file test =
-  snd (testName test) ++
-  " (module " ++ file ++ ", line " ++ show (testLine test) ++ ")"
+genTestMsg file test = snd (testName test) ++ showModuleLine file (testLine test)
+
+-- Shows module name and line (if not zero) in brackets.
+showModuleLine :: String -> Int -> String
+showModuleLine mname ln =
+  " (module " ++ mname ++ if ln == 0 then ")"
+                                     else ", line " ++ show ln ++ ")"
 
 -- Generates the name of a test in the main test module from the test name.
 genTestName :: Test -> String
@@ -966,8 +970,7 @@ analyseCurryProg opts modname orgprog = do
   return (if testThisModule dettm then [tm,dettm] else [tm])
  where
   showOpError words (qf,err) =
-    snd qf ++ " (module " ++ modname ++ ", line " ++
-    show (getLineNumber words qf) ++"): " ++ err
+    snd qf ++ showModuleLine modname (getLineNumber words qf) ++ ": " ++ err
 
   addLinesNumbers words = map (addLineNumber words)
 
