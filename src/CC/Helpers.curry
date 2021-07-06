@@ -21,8 +21,8 @@ ccLoadPath = do
     let ecurrypath' = case ecurrypath of ':':_ -> '.':ecurrypath
                                          _     -> ecurrypath
     return $ intercalate ":"
-                      (if null ecurrypath' then ccExecLoadPath
-                                           else ecurrypath' : ccExecLoadPath)
+               (if null ecurrypath' then ccExecLoadPath
+                                    else ecurrypath' : ccExecLoadPath)
 
 --- Computes the additional load path for executing the
 --- generated program that executes all checks.
@@ -32,6 +32,6 @@ ccExecLoadPath =
  where
   isRequiredPackage dir =
     any (`isInfixOf` dir)
-        [ "ansi-terminal", "directory", "distribution", "easycheck"
-        , "filepath", "process", "profiling", "random"
+        [ "allvalues", "ansi-terminal", "directory", "distribution"
+        , "easycheck", "filepath", "process", "profiling", "random"
         , "searchtree", "setfunctions", "time" ]
