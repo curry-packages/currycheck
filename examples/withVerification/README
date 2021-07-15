@@ -42,9 +42,11 @@ To get some confidence in its general correctness, we test it:
 
 Since everything looks fine, we try to prove it with Agda.
 For this purpose, we translate the property and all involved
-functions into an Agda program:
+functions into an Agda program with the tool `curry-verify`
+(see Curry package
+[verify](https://www-ps.informatik.uni-kiel.de/~cpm/pkgs/verify.html)):
 
-    > curry2verify ListProp
+    > curry-verify ListProp
     ...
     Agda module 'TO-PROVE-appendAddLengths.agda' written.
     ...
