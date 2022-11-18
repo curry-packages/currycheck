@@ -3,7 +3,7 @@
 --- default rules in a Curry program.
 ---
 --- @author Michael Hanus
---- @version October 2016
+--- @version November 2022
 ------------------------------------------------------------------------
 
 module DefaultRuleUsage
@@ -49,7 +49,7 @@ checkDefaultRule funcs (CFunc defqn@(mn,deffn) ar _ _ rules)
 checkLocalDefaultRule :: CFuncDecl -> [(QName,String)]
 checkLocalDefaultRule (CmtFunc _ qf ar vis texp rules) =
   checkLocalDefaultRule (CFunc qf ar vis texp rules)
-checkLocalDefaultRule (CFunc defqn@(mn,deffn) ar _ _ rules) =
+checkLocalDefaultRule (CFunc defqn _ _ _ rules) =
   checkLocalRules (concatMap allLocalDecls rules)
  where
   checkLocalRules ldecls =

@@ -5,6 +5,9 @@
 
 {-# OPTIONS_FRONTEND -Wno-overlapping #-}
 
+module AbstractCurryMatch ( withExp, cfunWithExp )
+ where
+
 import AbstractCurry.Types
 
 --- Returns (non-deterministically) some expression that contains

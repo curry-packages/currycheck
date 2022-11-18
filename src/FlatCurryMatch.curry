@@ -5,17 +5,20 @@
 
 {-# OPTIONS_FRONTEND -Wno-overlapping #-}
 
+module FlatCurryMatch ( withExp, funWithExp, funWithinExp )
+ where
+
 import FlatCurry.Types
 
 --- Returns (non-deterministically) some expression that contains
 --- the given expression as a subexpression.
 withExp :: Expr -> Expr
 withExp e = e -- the subexpression is the entire expression
-withExp e = Comb _ _ (_++[withExp e]++_)
-withExp e = Let  _ (withExp e) ? Let (_++[(_,withExp e)]++_) _
+withExp e = Comb _ _ (_ ++ [withExp e] ++ _)
+withExp e = Let  _ (withExp e) ? Let (_ ++ [(_,withExp e)] ++ _) _
 withExp e = Free _ (withExp e)
 withExp e = Or (withExp e) _ ? Or _ (withExp e)
-withExp e = Case  _ (withExp e) _ ? Case _ _ (_++[Branch _ (withExp e)]++_)
+withExp e = Case  _ (withExp e) _ ? Case _ _ (_ ++ [Branch _ (withExp e)] ++ _)
 withExp e = Typed (withExp e) _
 
 --- Returns (non-deterministically) a function declaration containing
@@ -54,7 +57,7 @@ inExp (Typed se te) x e = Typed (inExp se x e) te
 --- space when matching against a finite expression with the operation
 --- `inExp`.
 withElem :: Data a => a -> a -> [a] -> [a]
-withElem e x zs = prefix ++ e : (zs=:=prefix++(x:suffix) &> suffix)
+withElem e x zs = prefix ++ e : (zs =:= prefix ++ (x:suffix) &> suffix)
    where prefix,suffix free
 
 --- Returns (non-deterministically) some function declaration for the
