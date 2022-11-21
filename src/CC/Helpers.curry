@@ -5,9 +5,9 @@
 module CC.Helpers ( ccLoadPath )
  where
 
-import System.FilePath    ( splitSearchPath )
 import Data.List          ( intercalate, isInfixOf )
 import System.Environment ( getEnv )
+import System.FilePath    ( splitSearchPath )
 
 import CC.Config ( packageLoadPath )
 
