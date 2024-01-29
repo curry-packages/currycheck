@@ -14,7 +14,7 @@
 ---   (together with possible preconditions).
 ---
 --- @author Michael Hanus, Jan-Patrick Baye
---- @version June 2021
+--- @version February 2023
 -------------------------------------------------------------------------
 
 import Control.Monad               ( unless, when )
@@ -38,6 +38,8 @@ import AbstractCurry.Transform ( renameCurryModule, trCTypeExpr, updCProg
                                , updQNamesInCProg, updQNamesInCFuncDecl )
 import Analysis.Termination    ( Productivity(..) )
 import Contract.Names
+import Language.Curry.CheckDetUsage   ( checkDetUse, containsDetOperations )
+import Language.Curry.CheckOperations ( checkBlacklistUse, checkSetUse )
 import qualified FlatCurry.Types as FC
 import FlatCurry.Files
 import qualified FlatCurry.Goodies as FCG
@@ -52,21 +54,19 @@ import CC.AnalysisHelpers ( getTerminationInfos, getProductivityInfos
 import CC.Config          ( packagePath, packageVersion )
 import CC.Helpers         ( ccLoadPath )
 import CC.Options
-import CheckDetUsage      ( checkDetUse, containsDetOperations)
 import Contract.Usage     ( checkContractUsage )
 import DefaultRuleUsage   ( checkDefaultRules, containsDefaultRules )
 import PropertyUsage
 import SimplifyPostConds  ( simplifyPostConditionsWithTheorems )
 import TheoremUsage       ( determinismTheoremFor, existsProofFor
                           , getModuleProofFiles, getTheoremFunctions )
-import UsageCheck         ( checkBlacklistUse, checkSetUse )
 
 -- Banner of this tool:
 ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 15/07/2021)"
+                packageVersion ++ " of 01/02/2023)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -1742,7 +1742,7 @@ arityOfType = length . argTypes
 
 --- Name of the SearchTree module.
 searchTreeModule :: String
-searchTreeModule = "Control.SearchTree"
+searchTreeModule = "Control.Search.SearchTree"
 
 --- Name of SearchTree type constructor.
 searchTreeTC :: QName
@@ -1750,7 +1750,7 @@ searchTreeTC = (searchTreeModule,"SearchTree")
 
 --- Name of the SearchTreeGenerator module.
 generatorModule :: String
-generatorModule = "Control.SearchTree.Generators"
+generatorModule = "Control.Search.SearchTree.Generators"
 
 choiceGen :: QName
 choiceGen = (generatorModule,"|||")

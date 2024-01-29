@@ -2,7 +2,7 @@
 -- Here are some examples for problems detected by CurryCheck
 ---------------------------------------------------------------------------
 
-import Control.SetFunctions
+import Control.Search.SetFunctions
 
 -- Detection of unintended uses of set functions.
 -- Note that `setN` must be applied to an `N`-ary top-level operation

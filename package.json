@@ -1,13 +1,13 @@
 {
     "name": "currycheck",
-    "version": "3.0.0",
+    "version": "3.2.0",
     "author": "Michael Hanus <mh@informatik.uni-kiel.de>",
     "synopsis": "A tool to support automatic testing of Curry programs",
     "category": [ "Testing" ],
     "license": "BSD-3-Clause",
     "licenseFile": "LICENSE",
     "dependencies": {
-        "base"          : ">= 3.0.0, < 4.0.0",
+        "base"          : ">= 3.2.0, < 4.0.0",
         "abstract-curry": ">= 3.0.0, < 4.0.0",
         "ansi-terminal" : ">= 3.0.0, < 4.0.0",
         "cass-analysis" : ">= 3.0.0, < 4.0.0",
@@ -15,16 +15,16 @@
         "containers"    : ">= 3.0.0, < 4.0.0",
         "contracts"     : ">= 3.0.0, < 4.0.0",
         "csv"           : ">= 3.0.0, < 4.0.0",
+        "curry-source"  : "^ 1.0.0",
         "currypath"     : ">= 3.0.0, < 4.0.0",
         "directory"     : ">= 3.0.0, < 4.0.0",
-        "easycheck"     : ">= 3.0.0, < 4.0.0",
+        "easycheck"     : ">= 3.2.0, < 4.0.0",
         "filepath"      : ">= 3.0.0, < 4.0.0",
         "flatcurry"     : ">= 3.0.0, < 4.0.0",
         "frontend-exec" : ">= 3.0.0, < 4.0.0",
         "process"       : ">= 3.0.0, < 4.0.0",
         "profiling"     : ">= 3.0.0, < 4.0.0",
         "rewriting"     : ">= 3.0.0, < 4.0.0",
-        "setfunctions"  : ">= 3.0.0, < 4.0.0",
         "wl-pprint"     : ">= 3.0.0, < 4.0.0"
     },
     "configModule": "CC.Config",
@@ -55,7 +55,7 @@
         "main": "main.tex"
     },
     "source": {
-        "git": "https://git.ps.informatik.uni-kiel.de/curry-packages/currycheck.git",
+        "git": "https://github.com/curry-packages/currycheck.git",
         "tag": "$version"
     }
 }

@@ -1,5 +1,5 @@
 import Test.Prop
-import Control.SearchTree.Generators
+import Control.Search.SearchTree.Generators
 
 rev :: [a] -> [a]
 rev []     = []
