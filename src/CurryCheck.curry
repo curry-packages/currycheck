@@ -66,7 +66,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 01/02/2023)"
+                packageVersion ++ " of 30/01/2024)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -992,8 +992,8 @@ generatorsOfProg = map funcName . filter isGen . functions
    isGen fdecl = "gen" `isPrefixOf` snd (funcName fdecl) &&
                  isSearchTreeType (resultType (typeOfQualType (funcType fdecl)))
 
-   isSearchTreeType (CTVar _)       = False
-   isSearchTreeType (CFuncType _ _) = False
+   isSearchTreeType (CTVar _)        = False
+   isSearchTreeType (CFuncType _ _)  = False
    isSearchTreeType (CTCons _)       = False
    isSearchTreeType te@(CTApply _ _) =
      maybe False ((==searchTreeTC) . fst) (tconsArgsOfType te)

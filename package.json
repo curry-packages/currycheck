@@ -25,6 +25,7 @@
         "process"       : ">= 3.0.0, < 4.0.0",
         "profiling"     : ">= 3.0.0, < 4.0.0",
         "rewriting"     : ">= 3.0.0, < 4.0.0",
+        "searchtree-extra" : "^ 1.0.0",
         "wl-pprint"     : ">= 3.0.0, < 4.0.0"
     },
     "configModule": "CC.Config",

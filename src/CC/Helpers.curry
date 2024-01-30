@@ -7,9 +7,9 @@ module CC.Helpers ( ccLoadPath )
 
 import Data.List          ( intercalate, isInfixOf )
 import System.Environment ( getEnv )
-import System.FilePath    ( splitSearchPath )
+import System.FilePath    ( searchPathSeparator )
 
-import CC.Config ( packageLoadPath )
+import CC.Config ( getPackageLoadPath )
 
 --- Computes the load path for executing the
 --- generated program that executes all checks.
@@ -20,18 +20,17 @@ ccLoadPath = do
     ecurrypath <- getEnv "CURRYPATH"
     let ecurrypath' = case ecurrypath of ':':_ -> '.':ecurrypath
                                          _     -> ecurrypath
-    return $ intercalate ":"
-               (if null ecurrypath' then ccExecLoadPath
-                                    else ecurrypath' : ccExecLoadPath)
+    execpath <- ccExecLoadPath
+    return $ intercalate [searchPathSeparator] $
+      if null ecurrypath' then execpath else ecurrypath' : execpath
 
 --- Computes the additional load path for executing the
 --- generated program that executes all checks.
-ccExecLoadPath :: [String]
-ccExecLoadPath =
-  filter isRequiredPackage (splitSearchPath packageLoadPath)
+ccExecLoadPath :: IO [String]
+ccExecLoadPath = fmap (filter isRequiredPackage) getPackageLoadPath
  where
   isRequiredPackage dir =
     any (`isInfixOf` dir)
         [ "allvalues", "ansi-terminal", "directory", "distribution"
         , "easycheck", "filepath", "process", "profiling", "random"
-        , "searchtree", "setfunctions", "time" ]
+        , "searchtree-extra", "time" ]
