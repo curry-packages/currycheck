@@ -1225,7 +1225,7 @@ genShowP _ (FC.TypeNew _ _ _ _) =
 genShowP mainmod (FC.Type qtc@(_,tc) _ tvars consdecls) =
   CInstance (pre "Show")
             (CContext (map (\tv -> (pre "Show", CTVar tv)) polyavars))
-            (applyTC (mainmod,t2bt tc) (map CTVar polyavars))
+            [applyTC (mainmod,t2bt tc) (map CTVar polyavars)]
    [cfunc
     (pre "show") 1 Public
     (emptyClassType
