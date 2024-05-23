@@ -1,6 +1,6 @@
 {
     "name": "currycheck",
-    "version": "3.2.0",
+    "version": "4.0.0",
     "author": "Michael Hanus <mh@informatik.uni-kiel.de>",
     "synopsis": "A tool to support automatic testing of Curry programs",
     "category": [ "Testing" ],
@@ -8,14 +8,14 @@
     "licenseFile": "LICENSE",
     "dependencies": {
         "base"          : ">= 3.2.0, < 4.0.0",
-        "abstract-curry": ">= 3.0.0, < 4.0.0",
+        "abstract-curry": ">= 4.0.0",
         "ansi-terminal" : ">= 3.0.0, < 4.0.0",
         "cass-analysis" : ">= 3.0.0, < 4.0.0",
         "cass"          : ">= 3.0.0, < 4.0.0",
         "containers"    : ">= 3.0.0, < 4.0.0",
         "contracts"     : ">= 3.0.0, < 4.0.0",
         "csv"           : ">= 3.0.0, < 4.0.0",
-        "curry-source"  : "^ 1.0.0",
+        "curry-source"  : ">= 2.0.0",
         "currypath"     : ">= 3.0.0, < 4.0.0",
         "directory"     : ">= 3.0.0, < 4.0.0",
         "easycheck"     : ">= 3.2.0, < 4.0.0",
@@ -24,7 +24,7 @@
         "frontend-exec" : ">= 3.0.0, < 4.0.0",
         "process"       : ">= 3.0.0, < 4.0.0",
         "profiling"     : ">= 3.0.0, < 4.0.0",
-        "rewriting"     : ">= 3.0.0, < 4.0.0",
+        "rewriting"     : ">= 4.0.0",
         "searchtree-extra" : "^ 1.0.0",
         "wl-pprint"     : ">= 3.0.0, < 4.0.0"
     },
