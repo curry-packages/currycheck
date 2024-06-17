@@ -891,10 +891,8 @@ staticProgAnalysis :: Options -> String -> String -> CurryProg
 staticProgAnalysis opts modname progtxt prog = do
   putStrIfDetails opts "Checking source code for static errors...\n"
   fcyprog <- readFlatCurry modname
-  -- TODO: Both checkBlacklistUse and checkSetUse fail for DetOps because of the 
-  --       implementations using functional patterns. 
-  useerrs <- if optSource opts then return [] {- checkBlacklistUse prog -} else return []
-  seterrs <- if optSource opts then return [] {- checkSetUse fcyprog -} 
+  useerrs <- if optSource opts then checkBlacklistUse prog else return []
+  seterrs <- if optSource opts then checkSetUse fcyprog  
                                else return []
   let defruleerrs = if optSource opts then checkDefaultRules prog else []
   untypedprog <- readUntypedCurry modname
