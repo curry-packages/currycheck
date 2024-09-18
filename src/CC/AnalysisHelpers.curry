@@ -18,6 +18,7 @@ import Analysis.Termination  ( Productivity(..), productivityAnalysis
                              , terminationAnalysis )
 import Analysis.UnsafeModule ( unsafeModuleAnalysis )
 import CASS.Server           ( analyzeGeneric )
+import RW.Base               ( ReadWrite )
 
 import CC.Options
 
@@ -64,7 +65,8 @@ dropPublicQName (m,f) = (dropPublicSuffix m, f)
 -- Analyze a list of modules with some static program analysis.
 -- Returns the combined analysis information.
 -- Raises an error if something goes wrong.
-analyzeModules :: (Read a, Show a) => Options -> String -> Analysis a
+analyzeModules :: (Read a, Show a, ReadWrite a)
+               => Options -> String -> Analysis a
                -> [String] -> IO (ProgInfo a)
 analyzeModules opts ananame analysis mods = do
   putStrIfNormal opts $ withColor opts blue $
@@ -76,7 +78,8 @@ analyzeModules opts ananame analysis mods = do
 
 -- Analyze a module with some static program analysis.
 -- Raises an error if something goes wrong.
-analyzeModule :: (Read a, Show a) => Analysis a -> String -> IO (ProgInfo a)
+analyzeModule :: (Read a, Show a, ReadWrite a)
+              => Analysis a -> String -> IO (ProgInfo a)
 analyzeModule analysis mod = do
   aresult <- analyzeGeneric analysis mod
   either return
@@ -85,4 +88,3 @@ analyzeModule analysis mod = do
                    putStrLn "Ignoring analysis information"
                    return emptyProgInfo)
          aresult
-
