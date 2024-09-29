@@ -14,7 +14,7 @@
 ---   (together with possible preconditions).
 ---
 --- @author Michael Hanus, Jan-Patrick Baye
---- @version February 2023
+--- @version September 2024
 -------------------------------------------------------------------------
 
 import Control.Monad               ( unless, when )
@@ -66,7 +66,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 30/01/2024)"
+                packageVersion ++ " of 29/09/2024)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text

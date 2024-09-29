@@ -18,8 +18,7 @@ import Analysis.Termination  ( Productivity(..), productivityAnalysis
                              , terminationAnalysis )
 import Analysis.UnsafeModule ( unsafeModuleAnalysis )
 import CASS.Server           ( analyzeGeneric )
-import RW.Base               
-import System.IO             ( hPutChar )
+import RW.Base               ( ReadWrite )
 
 import CC.Options
 
@@ -90,27 +89,3 @@ analyzeModule analysis mod = do
                    return emptyProgInfo)
          aresult
 
-instance ReadWrite Productivity where
-  readRW strs xs = case xs of 
-    '0':r0 -> (NoInfo,      r0)
-    '1':r0 -> (Terminating, r0)
-    '2':r0 -> (DCalls a',   r1)
-      where
-        (a',r1) = readRW strs r0
-    '3':r0 -> (Looping, r0)
-    _   -> error "ReadWrite Productivity: no parse" 
-
-  showRW _ strs0 NoInfo = (strs0,showChar '0')
-  showRW _ strs0 Terminating = (strs0,showChar '1')
-  showRW params strs0 (DCalls a') = (strs1,showChar '2' . show1)
-    where
-      (strs1,show1) = showRW params strs0 a'
-  showRW _ strs0 Looping = (strs0,showChar '3')
-
-  writeRW _      h NoInfo      strs = hPutChar h '0' >> return strs
-  writeRW _      h Terminating strs = hPutChar h '1' >> return strs
-  writeRW params h (DCalls a') strs =
-    hPutChar h '2' >> writeRW params h a' strs
-  writeRW _      h Looping     strs = hPutChar h '3' >> return strs
-
-  typeOf _ = monoRWType "Productivity"
