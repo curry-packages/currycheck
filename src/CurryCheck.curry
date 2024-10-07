@@ -14,7 +14,7 @@
 ---   (together with possible preconditions).
 ---
 --- @author Michael Hanus, Jan-Patrick Baye
---- @version February 2023
+--- @version September 2024
 -------------------------------------------------------------------------
 
 import Control.Monad               ( unless, when )
@@ -66,7 +66,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 30/01/2024)"
+                packageVersion ++ " of 29/09/2024)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -777,35 +777,37 @@ poly2defaultType opts texp = p2dt texp
 -- Try to default a qualified type by replacing Num/Integral-constrained
 -- types by Int and Fractional-constrained types by Float.
 defaultQualType :: CQualTypeExpr -> CQualTypeExpr
-defaultQualType (CQualType (CContext allclscon) ftype) =
+defaultQualType q@(CQualType (CContext allclscon) ftype) =
   CQualType (CContext deffractxt) deffratype
  where
   (numcons,nonnumcons) =
-    partition (\ (cls,te) -> (cls == pre "Num" || cls == pre "Integral")
-                             && isTVar te)
+    partition (\ (cls,ts) -> (cls == pre "Num" || cls == pre "Integral")
+                             && length ts == 1 && isTVar (head ts))
               allclscon
   defnumtype = def2TConsInType numcons (pre "Int") ftype
   defnumctxt = removeNonTVarClassContexts
-                 (map (\ (cls,con) ->
-                                (cls, def2TConsInType numcons (pre "Int") con))
+                 (map (\ (cls,[con]) ->
+                                (cls, [def2TConsInType numcons (pre "Int") con]))
                       nonnumcons)
 
   (fracons,nonfracons) =
-    partition (\ (cls,te) -> cls == pre "Fractional" && isTVar te) defnumctxt
+    partition (\ (cls,ts) -> cls == pre "Fractional" && length ts == 1 && isTVar (head ts)) 
+              defnumctxt
   deffratype = def2TConsInType fracons (pre "Float") defnumtype
   deffractxt = removeNonTVarClassContexts
-                 (map (\ (cls,con) ->
-                              (cls, def2TConsInType fracons (pre "Float") con))
+                 (map (\ (cls,[con]) ->
+                              (cls, [def2TConsInType fracons (pre "Float") con]))
                       nonfracons)
 
   -- remove constant type class contexts
-  removeNonTVarClassContexts = filter (\ (_,te) -> isTVar te)
+  removeNonTVarClassContexts = filter (\ (_,ts) -> any isTVar ts)
 
   -- replace all type variables (occurring in the first list of class
   -- constraints) by the type constructor (second argument) in a given
   -- type expression (third argument)
+  def2TConsInType :: [CConstraint] -> QName -> CTypeExpr -> CTypeExpr
   def2TConsInType clscons tcons texp =
-    foldr (tvar2TCons tcons) texp (map snd clscons)
+    foldr (tvar2TCons tcons) texp (concatMap snd clscons)
 
   -- substitute a type variable by type Int in a type
   tvar2TCons tcons texp = case texp of
@@ -828,7 +830,7 @@ addShowContext (CContext clscons) =
 -- Adds `Eq` and `Show` class contexts for the given type variable.
 addEqShowContext :: CTVarIName -> CContext -> CContext
 addEqShowContext tvar (CContext clscons) =
-  CContext (nub (clscons ++ map (\c -> (pre c, CTVar tvar)) ["Eq","Show"]))
+  CContext (nub (clscons ++ map (\c -> (pre c, [CTVar tvar])) ["Eq","Show"]))
 
 -------------------------------------------------------------------------
 
@@ -890,7 +892,7 @@ staticProgAnalysis opts modname progtxt prog = do
   putStrIfDetails opts "Checking source code for static errors...\n"
   fcyprog <- readFlatCurry modname
   useerrs <- if optSource opts then checkBlacklistUse prog else return []
-  seterrs <- if optSource opts then checkSetUse fcyprog
+  seterrs <- if optSource opts then checkSetUse fcyprog  
                                else return []
   let defruleerrs = if optSource opts then checkDefaultRules prog else []
   untypedprog <- readUntypedCurry modname
@@ -1224,8 +1226,8 @@ genShowP _ (FC.TypeNew _ _ _ _) =
   error "genShowP: cannot translate newtypes"
 genShowP mainmod (FC.Type qtc@(_,tc) _ tvars consdecls) =
   CInstance (pre "Show")
-            (CContext (map (\tv -> (pre "Show", CTVar tv)) polyavars))
-            (applyTC (mainmod,t2bt tc) (map CTVar polyavars))
+            (CContext (map (\tv -> (pre "Show", [CTVar tv])) polyavars))
+            [applyTC (mainmod,t2bt tc) (map CTVar polyavars)]
    [cfunc
     (pre "show") 1 Public
     (emptyClassType
