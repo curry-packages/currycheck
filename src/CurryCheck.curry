@@ -777,7 +777,7 @@ poly2defaultType opts texp = p2dt texp
 -- Try to default a qualified type by replacing Num/Integral-constrained
 -- types by Int and Fractional-constrained types by Float.
 defaultQualType :: CQualTypeExpr -> CQualTypeExpr
-defaultQualType q@(CQualType (CContext allclscon) ftype) =
+defaultQualType (CQualType (CContext allclscon) ftype) =
   CQualType (CContext deffractxt) deffratype
  where
   (numcons,nonnumcons) =

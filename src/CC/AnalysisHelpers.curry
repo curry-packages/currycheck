@@ -65,7 +65,7 @@ dropPublicQName (m,f) = (dropPublicSuffix m, f)
 -- Analyze a list of modules with some static program analysis.
 -- Returns the combined analysis information.
 -- Raises an error if something goes wrong.
-analyzeModules :: (Read a, Show a, ReadWrite a)
+analyzeModules :: (Read a, Show a, ReadWrite a, Eq a)
                => Options -> String -> Analysis a
                -> [String] -> IO (ProgInfo a)
 analyzeModules opts ananame analysis mods = do
@@ -78,7 +78,7 @@ analyzeModules opts ananame analysis mods = do
 
 -- Analyze a module with some static program analysis.
 -- Raises an error if something goes wrong.
-analyzeModule :: (Read a, Show a, ReadWrite a)
+analyzeModule :: (Read a, Show a, ReadWrite a, Eq a)
               => Analysis a -> String -> IO (ProgInfo a)
 analyzeModule analysis mod = do
   aresult <- analyzeGeneric analysis mod
