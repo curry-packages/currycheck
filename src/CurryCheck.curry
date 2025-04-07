@@ -66,7 +66,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 29/09/2024)"
+                packageVersion ++ " of 07/04/2025)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
@@ -1605,7 +1605,7 @@ cleanup opts mainmod modules =
 
 -- Print or store some statistics about number of tests.
 printTestStatistics :: Options -> [String] -> String -> Int -> [Test] -> IO ()
-printTestStatistics opts mods testmodname retcode tests = do
+printTestStatistics opts mods _{-testmodname-} retcode tests = do
   let numtests  = sumOf (const True)
       unittests = sumOf isUnitTest  
       proptests = sumOf isPropTest  
@@ -1684,8 +1684,11 @@ checkModules opts mods = do
                         [ installDir </> "bin" </> "curry"
                         , "--noreadline" ] ++
                         (if null currypath then [] else ["--nocypm"]) ++
-                        [ ":set -time"
-                        , ":set " ++ if optVerb opts > 3 then "v1" else "v0"
+                        [ ":set -time" ] ++
+                        (if optTime opts && curryCompiler == "kics2"
+                           then [":set rts -T"]
+                           else []) ++
+                        [ ":set " ++ if optVerb opts > 3 then "v1" else "v0"
                         , ":set parser -Wnone" ] ++
                         (if null currypath
                            then []
