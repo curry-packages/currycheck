@@ -1,5 +1,5 @@
 -------------------------------------------------------------------------
---- This is the implementation of the currycheck tool.
+--- This is the main module of the implementation of the CurryCheck tool.
 --- It performs various checks on Curry programs:
 ---
 --- * Correct usage of set functions, non-strict unification,
@@ -14,8 +14,11 @@
 ---   (together with possible preconditions).
 ---
 --- @author Michael Hanus, Jan-Patrick Baye
---- @version September 2024
+--- @version May 2025
 -------------------------------------------------------------------------
+
+module CurryCheck ( main )
+ where
 
 import Control.Monad               ( unless, when )
 import Curry.Compiler.Distribution ( curryCompiler, installDir )
@@ -66,7 +69,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 07/04/2025)"
+                packageVersion ++ " of 05/05/2025)"
    bannerLine = take (length bannerText) (repeat '-')
 
 -- Help text
