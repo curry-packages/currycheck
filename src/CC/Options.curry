@@ -5,8 +5,14 @@
 module CC.Options where
 
 import Control.Monad        ( unless, when )
+import Curry.Compiler.Distribution
+                           ( baseVersion, curryCompiler
+                           , curryCompilerMajorVersion
+                           , curryCompilerMinorVersion
+                           , curryCompilerRevisionVersion
+                           , installDir )
 import Data.Char            ( toUpper )
-import Data.List            ( isPrefixOf )
+import Data.List            ( intercalate, isPrefixOf )
 import Numeric              ( readNat )
 import System.Console.GetOpt
 import System.IO
@@ -15,6 +21,7 @@ import System.IO
 -- Representation of command line options.
 data Options = Options
   { optHelp     :: Bool
+  , optConfig   :: Bool
   , optVerb     :: Int
   , optKeep     :: Bool
   , optMaxTest  :: Int
@@ -37,10 +44,11 @@ data Options = Options
 defaultOptions :: Options
 defaultOptions  = Options
   { optHelp     = False
+  , optConfig   = False
   , optVerb     = 1
   , optKeep     = False
-  , optMaxTest  = 0
-  , optMaxFail  = 0
+  , optMaxTest  = 100
+  , optMaxFail  = 10000
   , optDefType  = "Ordering"
   , optSource   = True
   , optIOTest   = True
@@ -57,13 +65,15 @@ defaultOptions  = Options
 
 --- Options for equivalence tests.
 data EquivOption = Safe | Autoselect | Manual | Ground
- deriving Eq
+ deriving (Eq, Show)
 
 -- Definition of actual command line options.
 options :: [OptDescr (Options -> Options)]
 options =
   [ Option "h?" ["help"] (NoArg (\opts -> opts { optHelp = True }))
            "print help and exit"
+  , Option "" ["config"] (NoArg (\opts -> opts { optConfig = True }))
+           "show current configuration and exit"
   , Option "q" ["quiet"] (NoArg (\opts -> opts { optVerb = 0 }))
            "run quietly (no output, only exit code)"
   , Option "v" ["verbosity"]
@@ -158,5 +168,29 @@ putStrLnIfDebug opts s = when (optVerb opts > 3) (putStrLn s >> hFlush stdout)
 --- use some coloring (from System.Console.ANSI.Codes) if color option is on:
 withColor :: Options -> (String -> String) -> String -> String
 withColor opts coloring = if optColor opts then coloring else id
+
+-- Help text
+usageText :: String
+usageText = usageInfo ("Usage: curry-check [options] <module names>\n") options
+
+-- Print current configuration.
+printConfiguration :: Options -> IO ()
+printConfiguration opts = do
+  putStrLn $ unlines
+    [ "\nCurrent configuration:\n"
+    , "Curry compiler      : " ++ curryCompiler ++ " " ++ version
+    , "Base version        : " ++ baseVersion
+    , "Curry home directory: " ++ installDir
+    , ""
+    , "Verbosity lebel     : " ++ show (optVerb opts)
+    , "Maximal tests       : " ++ show (optMaxTest opts)
+    , "Maximal failures    : " ++ show (optMaxFail opts)
+    , "Polymorphism default: " ++ optDefType opts
+    , "Equivalence testing : " ++ show (optEquiv opts)
+    ]
+ where
+  version =  intercalate "." $ map show
+               [curryCompilerMajorVersion, curryCompilerMinorVersion,
+                curryCompilerRevisionVersion]
 
 ------------------------------------------------------------------------------

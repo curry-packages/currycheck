@@ -69,12 +69,8 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 05/05/2025)"
+                packageVersion ++ " of 08/12/2025)"
    bannerLine = take (length bannerText) (repeat '-')
-
--- Help text
-usageText :: String
-usageText = usageInfo ("Usage: curry-check [options] <module names>\n") options
 
 --- Maximal arity of check functions and tuples currently supported:
 maxArity :: Int
@@ -313,7 +309,7 @@ genTestFuncs opts terminating productivity mainmod tm =
                (applyF (easyCheckExecModule, "checkPropWithMsg")
                  [ CVar msgvar
                  , applyF (easyCheckFuncName (length argtypes)) $
-                    [configOpWithMaxFail, CVar msgvar] ++
+                    [configOpWithMax, CVar msgvar] ++
                     (map (\ t ->
                           applyF (easyCheckModule,"valuesOfSearchTree")
                             [if isPAKCS || useUserDefinedGen t || isFloatType t
@@ -337,17 +333,11 @@ genTestFuncs opts terminating productivity mainmod tm =
         isJust (find (\qn -> "gen"++tc == snd qn) (generators tm)) ||
         mn==mainmod && "_Constant" `isSuffixOf` tc
 
-    configOpWithMaxTest =
-      let n = optMaxTest opts
-       in if n==0 then stdConfigOp
-                  else applyF (easyCheckExecModule,"setMaxTest")
-                              [cInt n, stdConfigOp]
-
-    configOpWithMaxFail =
-      let n = optMaxFail opts
-       in if n==0 then configOpWithMaxTest
-                  else applyF (easyCheckExecModule,"setMaxFail")
-                              [cInt n, configOpWithMaxTest]
+    configOpWithMax =
+       applyF (easyCheckExecModule,"setMaxFail")
+              [cInt (optMaxFail opts),
+               applyF (easyCheckExecModule,"setMaxTest")
+                      [cInt (optMaxTest opts), stdConfigOp]]
 
     msgvar = (0,"msg")
 
@@ -1635,11 +1625,16 @@ main :: IO ()
 main = do
   argv <- getArgs
   let (funopts, args, opterrors) = getOpt Permute options argv
-  opts <- processOpts (foldl (flip id) defaultOptions funopts)
+  opts0 <- processOpts (foldl (flip id) defaultOptions funopts)
   unless (null opterrors)
          (putStr (unlines opterrors) >> putStrLn usageText >> exitWith 1)
+  opts <- if null (optMainProg opts0)
+            then do pid <- getPID
+                    return $ opts0 { optMainProg = "TEST" ++ show pid }
+            else return opts0
   putStrIfNormal opts ccBanner
   when (optHelp opts) (putStrLn usageText >> exitWith 0)
+  when (optConfig opts) (printConfiguration opts >> exitWith 0)
   let mods = map stripCurrySuffix args
   case mods of
     []  -> putStrLn usageText >> exitWith 1
@@ -1659,12 +1654,9 @@ checkModules opts mods = do
   putStrLnIfDebug opts $ "SET CURRYPATH=" ++ currypath
   setEnv "CURRYPATH" currypath
   testModules <- mapM (analyseModule opts) mods
-  pid  <- getPID
   let staticerrs       = concatMap staticErrors (concat testModules)
       finaltestmodules = filter testThisModule (concat testModules)
-      testmodname = if null (optMainProg opts)
-                      then "TEST" ++ show pid
-                      else optMainProg opts
+      testmodname      = optMainProg opts
   if not (null staticerrs)
    then do showStaticErrors staticerrs
            putStrLn $ withColor opts red "Testing aborted!"
@@ -1696,7 +1688,7 @@ checkModules opts mods = do
                         (if null currypath
                            then []
                            else [":set path \"" ++ currypath ++ "\""]) ++
-                        [ ":l "++testmodname, ":eval main :q" ]
+                        [ ":l " ++ testmodname, ":eval main :q" ]
          putStrLnIfDebug opts $ "Executing command:\n" ++ runcmd
          ret <- system runcmd
          cleanup opts testmodname finaltestmodules
@@ -1706,7 +1698,7 @@ checkModules opts mods = do
   showStaticErrors errs = putStrLn $ withColor opts red $
     unlines (line : "STATIC ERRORS IN PROGRAMS:" : errs) ++ line
 
-  line = take 78 (repeat '=')
+  line = replicate 78 '='
 
 showGeneratedModule :: Options -> String -> String -> IO ()
 showGeneratedModule opts mkind modname = when (optVerb opts > 3) $ do
@@ -1716,7 +1708,7 @@ showGeneratedModule opts mkind modname = when (optVerb opts > 3) $ do
   readFile (modname ++ ".curry") >>= putStr
   putStrLn line
  where
-  line = take 78 (repeat '=')
+  line = replicate 78 '='
 
 -------------------------------------------------------------------------
 -- Auxiliaries
