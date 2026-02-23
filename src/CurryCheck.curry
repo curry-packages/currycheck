@@ -14,7 +14,7 @@
 ---   (together with possible preconditions).
 ---
 --- @author Michael Hanus, Jan-Patrick Baye
---- @version May 2025
+--- @version February 2026
 -------------------------------------------------------------------------
 
 module CurryCheck ( main )
@@ -69,7 +69,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 08/12/2025)"
+                packageVersion ++ " of 23/02/2026)"
    bannerLine = take (length bannerText) (repeat '-')
 
 --- Maximal arity of check functions and tuples currently supported:
