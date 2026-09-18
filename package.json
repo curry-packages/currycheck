@@ -39,7 +39,8 @@
           "options": "-m70",
           "modules": [ "DefaultRulesTest", "DetOps", "ExampleTests",
                        "ExamplesFromManual", "FloatTest", "HigherOrder",
-                       "Nats", "SEBF", "Sum", "SortSpec", "Tree", "MPTC" ]
+                       "Nats", "SEBF", "Sum", "SortSpec", "Tree",
+                       "MPTC", "MPTCListLike" ]
         },
         { "src-dir": "examples",
           "options": "-m70 -e ground",

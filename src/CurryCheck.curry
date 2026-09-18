@@ -14,7 +14,7 @@
 ---   (together with possible preconditions).
 ---
 --- @author Michael Hanus, Jan-Patrick Baye
---- @version February 2026
+--- @version September 2026
 -------------------------------------------------------------------------
 
 module CurryCheck ( main )
@@ -22,7 +22,7 @@ module CurryCheck ( main )
 
 import Control.Monad               ( unless, when )
 import Curry.Compiler.Distribution ( curryCompiler, installDir )
-import Data.Char                   ( toUpper )
+import Data.Char                   ( isSpace, toUpper )
 import Data.List
 import Data.Maybe                  ( fromJust, isJust )
 import System.Directory            ( createDirectoryIfMissing )
@@ -69,7 +69,7 @@ ccBanner :: String
 ccBanner = unlines [bannerLine,bannerText,bannerLine]
  where
    bannerText = "CurryCheck: a tool for testing Curry programs (Version " ++
-                packageVersion ++ " of 23/02/2026)"
+                packageVersion ++ " of 18/09/2026)"
    bannerLine = take (length bannerText) (repeat '-')
 
 --- Maximal arity of check functions and tuples currently supported:
@@ -927,7 +927,8 @@ analyseCurryProg opts modname orgprog = do
   theofuncs <- if optProof opts then getTheoremFunctions srcdir prog
                                 else return []
   -- compute already proved theorems for public module:
-  let pubmodname = modname++"_PUBLIC"
+  let pubmodname    = modname ++ "_PUBLIC"
+      pubdetmodname = modname ++ "_PUBLICDET"
       rnm2pub mn@(mod,n) | mod == modname = (pubmodname,n)
                          | otherwise      = mn
       theopubfuncs = map (updQNamesInCFuncDecl rnm2pub) theofuncs
@@ -936,7 +937,7 @@ analyseCurryProg opts modname orgprog = do
           . renameCurryModule pubmodname . makeAllPublic $ prog
   let (rawDetTests,ignoredDetTests,pubdetmod) =
         transformDetTests opts prooffiles
-              . renameCurryModule (modname ++ "_PUBLICDET")
+              . renameCurryModule pubdetmodname
               . makeAllPublic $ prog
   unless (not (null staticerrs) || null rawTests && null rawDetTests) $
     putStrIfNormal opts $
@@ -946,22 +947,22 @@ analyseCurryProg opts modname orgprog = do
     putStrIfNormal opts $
       "Properties ignored for testing:\n" ++
       unwords (map (snd . funcName) (ignoredTests ++ ignoredDetTests)) ++ "\n"
-  let tm    = TestModule modname
-                         (progName pubmod)
-                         staticerrs
-                         (addLinesNumbers words
-                            (map (classifyTest opts pubmod) rawTests))
-                         (generatorsOfProg pubmod)
-                         preCondOps
-      dettm = TestModule modname
-                         (progName pubdetmod)
-                         []
-                         (addLinesNumbers words
-                            (map (classifyTest opts pubdetmod) rawDetTests))
-                         (generatorsOfProg pubmod)
-                         []
-  when (testThisModule tm) $ writeCurryProgram opts topdir pubmod ""
-  when (testThisModule dettm) $ writeCurryProgram opts topdir pubdetmod ""
+  let pragmas = unlines (langPragmasOf progtxt)
+      tm      = TestModule modname (progName pubmod) staticerrs
+                           (addLinesNumbers words
+                              (map (classifyTest opts pubmod) rawTests))
+                           (generatorsOfProg pubmod) preCondOps
+      dettm   = TestModule modname (progName pubdetmod) []
+                           (addLinesNumbers words
+                              (map (classifyTest opts pubdetmod) rawDetTests))
+                           (generatorsOfProg pubmod) []
+  when (testThisModule tm) $
+    writeCurryProgram opts topdir
+      ("public module `" ++ pubmodname ++ ".curry'") pubmod pragmas ""
+  when (testThisModule dettm) $
+    writeCurryProgram opts topdir
+      ("public determinism module `" ++ pubdetmodname ++ ".curry'") pubdetmod
+      pragmas ""
   return (if testThisModule dettm then [tm,dettm] else [tm])
  where
   showOpError words (qf,err) =
@@ -1395,12 +1396,12 @@ genMainTestModule opts mainmod orgtestmods = do
                            map (fst . fst) testtypes ++
                            map testModuleName testmods
   appendix <- readFile (packagePath </> "include" </> "TestAppendix.curry")
-  writeCurryProgram opts "."
+  writeCurryProgram opts "." ("main test module `" ++ mainmod ++ ".curry'")
     (CurryProg mainmod imports Nothing [] showinsts bottypes
                (mainFunction : testfuncs ++ generators ++
                                frompfuns ++ pvalfuns ++ pevalfuns)
                [])
-    appendix
+    "" appendix
   let (finaltests,droppedtests) =
            partition ((`elem` map (snd . funcName) testfuncs) . genTestName)
                      (concatMap propTests testmods)
@@ -1673,7 +1674,6 @@ checkModules opts mods = do
            "Generating main test module '"++testmodname++"'..."
          putStrIfDetails opts "\n"
          finaltests <- genMainTestModule opts testmodname finaltestmodules
-         showGeneratedModule opts "main test" testmodname
          putStrIfNormal opts $ withColor opts blue $ "and compiling it...\n"
          let runcmd = unwords $
                         [ installDir </> "bin" </> "curry"
@@ -1700,12 +1700,13 @@ checkModules opts mods = do
 
   line = replicate 78 '='
 
-showGeneratedModule :: Options -> String -> String -> IO ()
-showGeneratedModule opts mkind modname = when (optVerb opts > 3) $ do
+-- Shows a generated program if verbosity>3.
+showGeneratedProgram :: Options -> String -> String -> IO ()
+showGeneratedProgram opts prgkind prgtxt = when (optVerb opts > 3) $ do
   putStrLn $ '\n' : line
-  putStrLn $ "Generated " ++ mkind ++ " module `" ++ modname ++ ".curry':"
+  putStrLn $ "Generated " ++ prgkind ++ ":"
   putStrLn line
-  readFile (modname ++ ".curry") >>= putStr
+  putStr prgtxt
   putStrLn line
  where
   line = replicate 78 '='
@@ -1729,8 +1730,8 @@ firstWord = head . splitOn "\t" . head . splitOn " "
 -- Strips a suffix from a string.
 stripSuffix :: String -> String -> String
 stripSuffix str suf = if suf `isSuffixOf` str
-                      then take (length str - length suf) str
-                      else str
+                        then take (length str - length suf) str
+                        else str
 
 -- Translate a module name to an identifier, i.e., replace '.' by '_':
 modNameToId :: String -> String
@@ -1755,15 +1756,30 @@ generatorModule = "Control.Search.SearchTree.Generators"
 choiceGen :: QName
 choiceGen = (generatorModule,"|||")
 
--- Writes a Curry module (together with an appendix) to its file.
-writeCurryProgram :: Options -> String -> CurryProg -> String -> IO ()
-writeCurryProgram opts srcdir p appendix = do
+-- Writes a Curry module (together with a prolog and an appendix) to its file.
+writeCurryProgram :: Options -> String -> String -> CurryProg
+                  -> String -> String -> IO ()
+writeCurryProgram opts srcdir prgkind p prolog appendix = do
   let progfile = srcdir </> modNameToPath (progName p) ++ ".curry"
   putStrLnIfDebug opts $ "Writing program: " ++ progfile
-  writeFile progfile (ACPretty.showCProg p ++ "\n" ++ appendix ++ "\n")
+  let progtxt = (if null prolog then "" else prolog ++ "\n") ++
+                ACPretty.showCProg p ++ "\n" ++
+                (if null appendix then "" else appendix ++ "\n")
+  writeFile progfile progtxt
+  showGeneratedProgram opts prgkind progtxt
 
 isPAKCS :: Bool
 isPAKCS = curryCompiler == "pakcs"
+
+-- Extracts all language pragmas occurring in a given program text.
+-- We assume that each language pragmas occurs in a single line.
+langPragmasOf :: String -> [String]
+langPragmasOf = filter isLangPragma . lines
+ where
+  isLangPragma s = "{-#" `isPrefixOf` s &&
+                   let s1 = dropWhile isSpace (drop 3 s)
+                   in "LANGUAGE "   `isPrefixOf` s1 &&
+                      "#-}" `isInfixOf` (drop 9 s1)
 
 -- Does a program text contains a OPTIONS_FRONTEND line to call currypp?
 containsPPOptionLine :: String -> Bool

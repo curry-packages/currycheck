@@ -1,3 +1,5 @@
+-- Test for a property related to multi-parameter type classes.
+
 {-# LANGUAGE MultiParamTypeClasses #-}
 
 import Test.Prop
